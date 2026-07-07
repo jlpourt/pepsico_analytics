@@ -23,6 +23,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
   const [selectedTargetCrop, setSelectedTargetCrop] = useState('Potatoes'); // 'Potatoes', 'Soybeans', 'Corn'
   const [tooltip, setTooltip] = useState({ x: 0, y: 0, show: false, content: null });
   const [hoveredFuelBar, setHoveredFuelBar] = useState(null);
+  const [selectedStage, setSelectedStage] = useState('All'); // 'All', 'Seeding', 'Application', 'Harvest'
 
   const fetchRecords = async () => {
     setIsLoading(true);
@@ -45,7 +46,9 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
 
   // Global filters
   const regionFiltered = records.filter(r => selectedRegion === 'All' || r.region === selectedRegion);
-  const filteredRecords = regionFiltered.filter(r => !selectedVariety || r.variety === selectedVariety);
+  const filteredRecords = regionFiltered
+    .filter(r => !selectedVariety || r.variety === selectedVariety)
+    .filter(r => selectedStage === 'All' || r.cropStage === selectedStage);
 
   // Calculations based on globally filtered records
   const totalSubmissions = filteredRecords.length;
@@ -142,13 +145,40 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
   return (
     <div className="dashboard-container" style={{ padding: '1.25rem', gap: '1.25rem' }}>
       {/* Top Controls Header */}
-      <div className="dashboard-header-bar">
+      <div className="dashboard-header-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div className="dashboard-tag">
           <Database size={14} />
           <span>BigQuery Data Warehouse Active</span>
           <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
           <span style={{ color: '#fff', fontSize: '0.72rem', textTransform: 'uppercase' }}>Filtered: {selectedRegion} Region</span>
         </div>
+
+        {/* Global Crop Stage Filter Pills */}
+        <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--bg-sidebar)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
+          {['All', 'Seeding', 'Application', 'Harvest'].map(stage => (
+            <button
+              key={stage}
+              onClick={() => {
+                setSelectedStage(stage);
+                setSelectedFieldId(null);
+              }}
+              style={{
+                backgroundColor: selectedStage === stage ? 'var(--frito-gold)' : 'transparent',
+                color: selectedStage === stage ? '#000000' : 'var(--text-secondary)',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '0.62rem',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.15s'
+              }}
+            >
+              {stage === 'All' ? 'All Stages' : stage === 'Application' ? 'Protection Inputs' : `${stage} Phase`}
+            </button>
+          ))}
+        </div>
+
         <button onClick={fetchRecords} className="refresh-button">
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
         </button>
@@ -463,7 +493,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
             )}
           </h5>
           {varietyData.length === 0 ? (
-            <div className="empty-chart flex-center h-100">No records found.</div>
+            <div className="empty-chart flex-center h-100">No variety yield logs in this stage.</div>
           ) : (
             <div className="svg-chart-container" style={{ marginTop: '0.4rem' }}>
               <svg width="100%" height={varietyData.length * 40 + 20} viewBox={`0 0 400 ${varietyData.length * 40 + 20}`}>
@@ -555,7 +585,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
             </div>
           </h5>
           {filteredRecords.length === 0 ? (
-            <div className="empty-chart flex-center h-100">No records.</div>
+            <div className="empty-chart flex-center h-100">No yield logs available in selected stage. Click 'Harvest Phase' to view moisture charts.</div>
           ) : (
             <div className="svg-chart-container" style={{ marginTop: '0.4rem' }}>
               <svg width="100%" height="150" viewBox="0 0 400 150">
@@ -791,7 +821,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
               <h5 className="chart-title">Precision Planting Seeding Deviation (%)</h5>
               {seedingAccuracyData.length === 0 ? (
                 <div className="empty-chart flex-center h-100 text-muted" style={{ fontSize: '0.65rem' }}>
-                  No active rotation seeding telemetry loaded (Soybeans/Corn crops only).
+                  No active seeding telemetry logs in selected stage. Click 'Seeding Phase' to audit precision metrics.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px 0', flex: 1, overflowY: 'auto' }}>

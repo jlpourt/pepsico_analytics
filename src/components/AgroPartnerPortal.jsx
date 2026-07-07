@@ -39,6 +39,12 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
     }
   };
 
+  useEffect(() => {
+    if (extractedData) {
+      setActiveCategory('Foundation Critical');
+    }
+  }, [extractedData]);
+
   // Map drawer for Maker-Checker coordinate validation
   useEffect(() => {
     if (viewMode !== 'maker-checker' || !extractedData || !extractedData.fieldLocation || typeof window === 'undefined') return;
@@ -237,7 +243,7 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
 
   // Group fields into categories (aligned with Datapoints.pdf groups)
   const categories = {
-    'Foundation Critical': ['fieldName', 'variety', 'country', 'vendorName', 'growerName', 'cropSeason', 'fieldLocation'],
+    'Foundation Critical': ['fieldName', 'variety', 'country', 'vendorName', 'growerName', 'cropSeason', 'fieldLocation', 'cropStage'],
     'Foundation Recommended': ['region', 'vendorContact', 'cipcApplied', 'activeIngredientRate', 'irrigationType', 'moisturePercentage', 'defectRate', 'yieldTons'],
     'Advanced Insights': ['agronomistName', 'nApplied', 'nTotal', 'pTotal', 'kTotal', 'vrtUsed', 'fertilizerType', 'fertilizerNature', 'nitrogenAnalysis', 'phosphateAnalysis', 'potassiumAnalysis', 'applicationRate', 'applicationMethod', 'emissionsInhibitors', 'applicationDate'],
     'Machinery Telemetry': ['cropType', 'equipmentModel', 'totalFuelGal', 'fuelRateGalAc', 'productivityAcHr', 'areaSeededAc', 'appliedRateSeedsAc', 'targetRateSeedsAc']
@@ -253,6 +259,7 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
     fieldName: 'Field Name',
     variety: 'Crop Variety / Genotype',
     fieldLocation: 'GPS Coordinates WKT',
+    cropStage: 'Agricultural Stage',
     agronomistName: 'PepsiCo Agronomist',
     irrigationType: 'Irrigation Type',
     nApplied: 'N Applied (kg/ha)',
@@ -788,7 +795,12 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
 
           {/* Form category select tabs */}
           <div className="category-tabs" style={{ display: 'flex', gap: '4px', marginBottom: '2px', borderBottom: '1px solid var(--border-card)', paddingBottom: '3px' }}>
-            {Object.keys(categories).map(cat => (
+            {Object.keys(categories).filter(cat => {
+              const stage = extractedData.cropStage || 'Harvest';
+              if (stage === 'Seeding') return ['Foundation Critical', 'Machinery Telemetry'].includes(cat);
+              if (stage === 'Application') return ['Foundation Critical', 'Advanced Insights'].includes(cat);
+              return ['Foundation Critical', 'Foundation Recommended'].includes(cat);
+            }).map(cat => (
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}

@@ -68,7 +68,8 @@ async function getRecords() {
         productivityAcHr: r.productivityAcHr !== null ? String(r.productivityAcHr) : '',
         areaSeededAc: r.areaSeededAc !== null ? String(r.areaSeededAc) : '',
         appliedRateSeedsAc: r.appliedRateSeedsAc !== null ? String(r.appliedRateSeedsAc) : '',
-        targetRateSeedsAc: r.targetRateSeedsAc !== null ? String(r.targetRateSeedsAc) : ''
+        targetRateSeedsAc: r.targetRateSeedsAc !== null ? String(r.targetRateSeedsAc) : '',
+        cropStage: r.cropStage || 'Harvest'
       };
     });
   } catch (error) {
@@ -92,14 +93,16 @@ async function saveRecord(record) {
         fertilizerType, fertilizerNature, nitrogenAnalysis, ammoniaPercentage, nitricPercentage, ureaPercentage,
         phosphateAnalysis, potassiumAnalysis, applicationRate, applicationMethod, emissionsInhibitors, applicationDate,
         agronomistName, moisturePercentage, defectRate, yieldTons, submissionStatus, submissionTimestamp,
-        cropType, equipmentModel, totalFuelGal, fuelRateGalAc, productivityAcHr, areaSeededAc, appliedRateSeedsAc, targetRateSeedsAc
+        cropType, equipmentModel, totalFuelGal, fuelRateGalAc, productivityAcHr, areaSeededAc, appliedRateSeedsAc, targetRateSeedsAc,
+        cropStage
       ) VALUES (
         @id, @fieldName, @variety, @country, @vendorName, @growerName, @cropSeason, @fieldLocation, @region, @vendorContact,
         @cipcApplied, @activeIngredientRate, @irrigationType, @nApplied, @nTotal, @pTotal, @kTotal, @vrtUsed,
         @fertilizerType, @fertilizerNature, @nitrogenAnalysis, @ammoniaPercentage, @nitricPercentage, @ureaPercentage,
         @phosphateAnalysis, @potassiumAnalysis, @applicationRate, @applicationMethod, @emissionsInhibitors, @applicationDate,
         @agronomistName, @moisturePercentage, @defectRate, @yieldTons, @submissionStatus, CURRENT_TIMESTAMP(),
-        @cropType, @equipmentModel, @totalFuelGal, @fuelRateGalAc, @productivityAcHr, @areaSeededAc, @appliedRateSeedsAc, @targetRateSeedsAc
+        @cropType, @equipmentModel, @totalFuelGal, @fuelRateGalAc, @productivityAcHr, @areaSeededAc, @appliedRateSeedsAc, @targetRateSeedsAc,
+        @cropStage
       )
     `;
     
@@ -153,7 +156,8 @@ async function saveRecord(record) {
       productivityAcHr: safeFloat(record.productivityAcHr),
       areaSeededAc: safeFloat(record.areaSeededAc),
       appliedRateSeedsAc: record.appliedRateSeedsAc ? parseInt(record.appliedRateSeedsAc) : null,
-      targetRateSeedsAc: record.targetRateSeedsAc ? parseInt(record.targetRateSeedsAc) : null
+      targetRateSeedsAc: record.targetRateSeedsAc ? parseInt(record.targetRateSeedsAc) : null,
+      cropStage: record.cropStage || 'Harvest'
     };
     
     await bigquery.query({

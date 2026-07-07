@@ -118,6 +118,7 @@ Fields to extract (JSON keys):
 - areaSeededAc (Total area seeded in acres)
 - appliedRateSeedsAc (Actual seeding application rate in seeds/ac)
 - targetRateSeedsAc (Target seeding rate in seeds/ac)
+- cropStage (Stage of the log submission: "Seeding", "Application", or "Harvest". Determine based on parameters in report)
 
 Respond ONLY with a valid JSON object matching this schema. Do not enclose it in markdown code blocks.
 `;
@@ -154,7 +155,7 @@ Respond ONLY with a valid JSON object matching this schema. Do not enclose it in
  * Helper to parse custom text triggers in fallback mode.
  */
 function mockParseText(text) {
-  if (!text || text.length < 10) return { ...BASE_MOCK_EXTRACTION };
+  if (!text || text.length < 10) return { ...BASE_MOCK_EXTRACTION, cropStage: 'Harvest' };
   
   const t = text.toLowerCase();
   const res = { ...BASE_MOCK_EXTRACTION };
@@ -183,37 +184,101 @@ function mockParseText(text) {
   }
 
   // Seeding logs trigger
-  if (t.includes("soybeans") || t.includes("seeding") || t.includes("corn")) {
+  if (t.includes("seeding") || t.includes("soybeans") || t.includes("corn")) {
+    res.cropStage = "Seeding";
     res.cropType = t.includes("soybeans") ? "Soybeans" : t.includes("corn") ? "Corn" : "Potatoes";
     res.equipmentModel = "John Deere 8295R";
-    res.fieldName = "Field-1";
-    res.growerName = "John Deere Operator";
-    res.vendorName = "Merriweather Farm";
-    res.cropSeason = "2013";
-    res.fieldLocation = "POLYGON((-93.5937 41.5868, -93.5737 41.5868, -93.5737 41.6068, -93.5937 41.6068, -93.5937 41.5868))";
+    res.fieldName = "Field-101";
+    res.growerName = "Sarah Jenkins";
+    res.vendorName = "Jenkins Agro Ltd";
+    res.cropSeason = "2026";
+    res.fieldLocation = "POLYGON((-84.0 44.0, -83.98 44.0, -83.98 44.02, -84.0 44.02, -84.0 44.0))";
     res.areaSeededAc = "5.7";
     res.appliedRateSeedsAc = "152000";
-    res.targetRateSeedsAc = "165000";
+    res.targetRateSeedsAc = "150000";
     res.totalFuelGal = "3.1";
-    res.fuelRateGalAc = "0.50";
+    res.fuelRateGalAc = "0.54";
     res.productivityAcHr = "15.8";
-    res.yieldTons = "34.5";
+    
+    // Clear other stages fields
+    res.yieldTons = null;
+    res.moisturePercentage = null;
+    res.defectRate = null;
+    res.nApplied = null;
+    res.applicationDate = null;
+    res.fertilizerType = null;
+  } 
+  // Application logs trigger
+  else if (t.includes("application") || t.includes("tank mix") || t.includes("3x di")) {
+    res.cropStage = "Application";
+    res.cropType = "Potatoes";
+    res.fieldName = "Field-102";
+    res.growerName = "John Miller";
+    res.vendorName = "Midwest Spuds Inc";
+    res.fertilizerType = "NPK 15-15-15";
+    res.fertilizerNature = "Mineral";
+    res.nApplied = "32.5";
+    res.applicationRate = "250.0";
+    res.applicationMethod = "Broadcast";
+    res.applicationDate = "2026-06-15";
+    res.vrtUsed = "Yes";
+    res.cipcApplied = "CIPC";
+    res.activeIngredientRate = "15.0";
+    res.equipmentModel = "John Deere 8295R";
+    res.totalFuelGal = "12.4";
+    res.fuelRateGalAc = "0.45";
+    
+    // Clear other stages
+    res.areaSeededAc = null;
+    res.appliedRateSeedsAc = null;
+    res.targetRateSeedsAc = null;
+    res.yieldTons = null;
+    res.moisturePercentage = null;
+    res.defectRate = null;
+  }
+  // Harvest logs trigger
+  else if (t.includes("harvest") || t.includes("yield") || t.includes("fresh crop")) {
+    res.cropStage = "Harvest";
+    res.cropType = "Potatoes";
+    res.fieldName = "Field-103";
+    res.growerName = "David Smith";
+    res.vendorName = "Idaho Spud Farms";
+    res.moisturePercentage = "14.2";
+    res.defectRate = "1.8";
+    res.yieldTons = "42.5";
+    res.equipmentModel = "John Deere 8295R";
+    res.totalFuelGal = "45.0";
+    res.fuelRateGalAc = "1.25";
+    
+    // Clear other stages
+    res.areaSeededAc = null;
+    res.appliedRateSeedsAc = null;
+    res.targetRateSeedsAc = null;
+    res.nApplied = null;
+    res.applicationDate = null;
+    res.fertilizerType = null;
+  } else {
+    // Default is harvest potatoes
+    res.cropStage = "Harvest";
   }
 
   // Regex selectors for numeric values
   const moistureMatch = text.match(/(?:moisture|water).*?(\d+(?:\.\d+)?)/i);
   if (moistureMatch) {
     res.moisturePercentage = String(moistureMatch[1]);
+    res.cropStage = "Harvest";
   }
   
   const defectMatch = text.match(/(?:defect|spoil).*?(\d+(?:\.\d+)?)/i);
   if (defectMatch) {
     res.defectRate = String(defectMatch[1]);
+    res.cropStage = "Harvest";
   }
   
   const yieldMatch = text.match(/(?:yield|harvest|volume).*?(\d+(?:\.\d+)?)/i);
   if (yieldMatch) {
     res.yieldTons = String(yieldMatch[1]);
+    res.cropStage = "Harvest";
   }
   
   const fuelRateMatch = text.match(/(?:fuel rate|fuel rate \(area\)).*?(\d+(?:\.\d+)?)/i);

@@ -74,7 +74,8 @@ def setup_bigquery():
       productivityAcHr FLOAT64,
       areaSeededAc FLOAT64,
       appliedRateSeedsAc INT64,
-      targetRateSeedsAc INT64
+      targetRateSeedsAc INT64,
+      cropStage STRING
     )
     """
     success, output = run_bq_command(["query", "--use_legacy_sql=false", create_table_sql])
@@ -125,9 +126,7 @@ def generate_seed_data():
         {"name": "David Smith", "vendor": "Idaho Spud Farms", "contact": "david@idahospuds.com", "country": "USA", "region": "NA"},
         {"name": "Rajesh Patel", "vendor": "Patel Agri Ventures", "contact": "rajesh@patelagri.in", "country": "IND", "region": "AMESA"},
         {"name": "Amina El-Sayed", "vendor": "Nile Delta Harvest", "contact": "amina@nileharvest.eg", "country": "EGY", "region": "AMESA"},
-        {"name": "Vikram Singh", "vendor": "Punjab Agri Corp", "contact": "vikram@punjabagri.in", "country": "IND", "region": "AMESA"},
         {"name": "Carlos Gomez", "vendor": "Gomez Farms SA", "contact": "carlos.g@gomezfarms.mx", "country": "MEX", "region": "LATAM"},
-        {"name": "Mateo Silva", "vendor": "Silva Organics", "contact": "mateo@silvaorganics.br", "country": "BRA", "region": "LATAM"},
         {"name": "Renata Carvalho", "vendor": "Carvalho Agro", "contact": "renata@carvalhoagro.br", "country": "BRA", "region": "LATAM"}
     ]
     
@@ -139,18 +138,21 @@ def generate_seed_data():
         {"type": "Compost", "nature": "Organic", "n": 2.5, "p": 1.2, "k": 1.8, "urea": 0.0, "ammonia": 10.0, "nitric": 0.0}
     ]
     agronomists = ["David Vance", "Jane Smith", "Alistair Green", "Sophia Martinez"]
+    equipment_models = ["John Deere 8295R", "John Deere 8R 370", "Case IH Magnum 340", "New Holland T8"]
     
-    random.seed(42) # Deterministic seeding
+    random.seed(42)
     
-    # Generate 60 records distributed across seasons
-    for i in range(1, 61):
-        submission_id = f"SUB-{20000 + i}"
+    # We will generate 15 distinct farm plots (fields)
+    # For each plot, we generate Seeding, Application, and Harvest records (45 records total)
+    for plot_idx in range(1, 16):
         grower = random.choice(growers)
         variety = random.choice(varieties)
-        season = random.choice(["2025", "2026"])
+        crop_type = random.choice(["Potatoes", "Potatoes", "Potatoes", "Soybeans", "Corn"])
+        irr = random.choice(irrigation_types)
         agron = random.choice(agronomists)
+        fieldName = f"Field-{100 + plot_idx}"
         
-        # Geolocation polygon approximations (clustered close to each other per country)
+        # Coordinates
         if grower["country"] == "USA":
             lat, lon = 44.0 + random.uniform(-0.1, 0.1), -84.0 + random.uniform(-0.1, 0.1)
         elif grower["country"] == "IND":
@@ -164,91 +166,96 @@ def generate_seed_data():
             
         location_poly = f"POLYGON(({lon:.4f} {lat:.4f}, {lon+0.02:.4f} {lat:.4f}, {lon+0.02:.4f} {lat+0.02:.4f}, {lon:.4f} {lat+0.02:.4f}, {lon:.4f} {lat:.4f}))"
         
-        # Correlate yield and moisture
-        # Irrigation impacts yield and moisture
-        irr = random.choice(irrigation_types)
+        # Timeline offsets
+        # Seeding: April 2025
+        # Application: June 2025
+        # Harvest: September 2025
+        base_year = random.choice([2025, 2026])
+        seeding_timestamp = datetime(base_year, 4, random.randint(1, 28), random.randint(8, 16), 0, 0)
+        app_timestamp = seeding_timestamp + timedelta(days=random.randint(45, 60))
+        harvest_timestamp = app_timestamp + timedelta(days=random.randint(75, 90))
         
-        # Center Pivot / Drip => High yield, optimal moisture
-        # Flood / Rainfed => Variable yield, warning triggers
-        if irr in ["Drip", "Center Pivot"]:
-            moisture = round(random.uniform(13.0, 16.5), 1) # Target zone (12-18)
-            defect = round(random.uniform(1.0, 3.8), 1)     # Low defects (<4%)
-            yield_multiplier = random.uniform(1.2, 1.6)
-        else:
-            # Add some outliers for charts triggers!
-            moisture = round(random.choice([
-                random.uniform(9.0, 11.5),  # Low warning
-                random.uniform(18.2, 21.5), # High warning
-                random.uniform(13.0, 16.0)  # Optimal
-            ]), 1)
-            defect = round(random.choice([
-                random.uniform(0.5, 3.5),
-                random.uniform(4.5, 9.8) # High warning defects
-            ]), 1)
-            yield_multiplier = random.uniform(0.6, 1.1)
-            
-        yield_tons = round(random.uniform(25.0, 45.0) * yield_multiplier, 1)
-        
-        # Correlate fertilizer applications
-        fert = random.choice(fertilizers)
-        app_rate = round(random.uniform(150.0, 350.0), 1)
-        n_applied = round((app_rate * fert["n"]) / 100.0, 1)
-        
-        # Total volumes based on farm size (10-50 hectares)
-        farm_hectares = random.uniform(15.0, 45.0)
-        n_total = round((n_applied * farm_hectares) / 1000.0, 2)
-        p_total = round(((app_rate * fert["p"]) / 100.0 * farm_hectares) / 1000.0, 2)
-        k_total = round(((app_rate * fert["k"]) / 100.0 * farm_hectares) / 1000.0, 2)
-        
-        # Status assignment
-        if defect > 8.0 or moisture > 21.0 or moisture < 10.0:
-            status = "Flagged" # Red
-        elif defect > 4.0 or moisture > 18.0:
-            status = "Pending" # Amber review
-        else:
-            status = "Approved" # Green
-            
-        # Timestamps
-        days_ago = random.randint(10, 360)
-        sub_date = datetime.now() - timedelta(days=days_ago)
-        app_date = sub_date - timedelta(days=random.randint(30, 90))
+        # Farm size (10 - 45 Hectares / 25 - 110 Acres)
+        farm_size_ac = round(random.uniform(25.0, 110.0), 1)
+        farm_hectares = round(farm_size_ac * 0.4047, 1)
 
-        # Crop Rotation Telemetry Generator
-        crop_type = random.choice(["Potatoes", "Potatoes", "Potatoes", "Soybeans", "Corn"])
-        equipment = random.choice(["John Deere 8295R", "John Deere 8R 370", "Case IH Magnum 340", "New Holland T8"])
-        
-        if crop_type == "Potatoes":
-            area_seeded = round(random.uniform(20.0, 50.0), 1)
-            applied_rate = None
-            target_rate = None
-        else:
-            area_seeded = round(random.uniform(5.0, 30.0), 1)
-            applied_rate = random.choice([140000, 150000, 160000])
-            target_rate = 150000
-            
-        fuel_gal = round(random.uniform(10.0, 45.0), 1)
-        fuel_rate = round(random.uniform(0.6, 1.8), 2)
-        productivity = round(random.uniform(8.0, 18.0), 1)
-
-        rec = {
-            "id": submission_id,
-            "fieldName": f"Field-{random.randint(100, 199)}",
+        # 1. SEEDING LOG
+        seeding_rec = {
+            "id": f"LOG-S-{1000 + plot_idx}",
+            "fieldName": fieldName,
             "variety": variety,
             "country": grower["country"],
             "vendorName": grower["vendor"],
             "growerName": grower["name"],
-            "cropSeason": season,
+            "cropSeason": str(base_year),
             "fieldLocation": location_poly,
             "region": grower["region"],
             "vendorContact": grower["contact"],
-            "cipcApplied": random.choice(["CIPC", "None", "Other"]),
-            "activeIngredientRate": round(random.uniform(15.0, 30.0), 2),
+            "cipcApplied": None,
+            "activeIngredientRate": None,
+            "irrigationType": irr,
+            "nApplied": None,
+            "nTotal": None,
+            "pTotal": None,
+            "kTotal": None,
+            "vrtUsed": random.choice(["Yes", "No"]),
+            "fertilizerType": None,
+            "fertilizerNature": None,
+            "nitrogenAnalysis": None,
+            "ammoniaPercentage": None,
+            "nitricPercentage": None,
+            "ureaPercentage": None,
+            "phosphateAnalysis": None,
+            "potassiumAnalysis": None,
+            "applicationRate": None,
+            "applicationMethod": None,
+            "emissionsInhibitors": None,
+            "applicationDate": None,
+            "agronomistName": agron,
+            "moisturePercentage": None,
+            "defectRate": None,
+            "yieldTons": None,
+            "submissionStatus": "Approved",
+            "submissionTimestamp": seeding_timestamp.strftime("%Y-%m-%d %H:%M:%S.000000 UTC"),
+            "cropType": crop_type,
+            "equipmentModel": random.choice(equipment_models),
+            "totalFuelGal": round(random.uniform(25.0, 75.0), 1),
+            "fuelRateGalAc": round(random.uniform(0.6, 1.8), 2),
+            "productivityAcHr": round(random.uniform(8.0, 18.0), 1),
+            "areaSeededAc": farm_size_ac,
+            "appliedRateSeedsAc": 152000 if crop_type != "Potatoes" else None,
+            "targetRateSeedsAc": 150000 if crop_type != "Potatoes" else None,
+            "cropStage": "Seeding"
+        }
+        records.append(seeding_rec)
+
+        # 2. CROP PROTECTION / APPLICATION LOG
+        fert = random.choice(fertilizers)
+        app_rate = round(random.uniform(150.0, 350.0), 1)
+        n_applied = round((app_rate * fert["n"]) / 100.0, 1)
+        n_total = round((n_applied * farm_hectares) / 1000.0, 2)
+        p_total = round(((app_rate * fert["p"]) / 100.0 * farm_hectares) / 1000.0, 2)
+        k_total = round(((app_rate * fert["k"]) / 100.0 * farm_hectares) / 1000.0, 2)
+
+        app_rec = {
+            "id": f"LOG-A-{2000 + plot_idx}",
+            "fieldName": fieldName,
+            "variety": variety,
+            "country": grower["country"],
+            "vendorName": grower["vendor"],
+            "growerName": grower["name"],
+            "cropSeason": str(base_year),
+            "fieldLocation": location_poly,
+            "region": grower["region"],
+            "vendorContact": grower["contact"],
+            "cipcApplied": "None" if crop_type != "Potatoes" else random.choice(["CIPC", "None"]),
+            "activeIngredientRate": round(random.uniform(15.0, 30.0), 2) if crop_type == "Potatoes" else 0.0,
             "irrigationType": irr,
             "nApplied": n_applied,
             "nTotal": n_total,
             "pTotal": p_total,
             "kTotal": k_total,
-            "vrtUsed": random.choice(["Yes", "No"]),
+            "vrtUsed": seeding_rec["vrtUsed"],
             "fertilizerType": fert["type"],
             "fertilizerNature": fert["nature"],
             "nitrogenAnalysis": fert["n"],
@@ -260,24 +267,94 @@ def generate_seed_data():
             "applicationRate": app_rate,
             "applicationMethod": random.choice(["Broadcast", "Banding", "Drip"]),
             "emissionsInhibitors": random.choice(["Yes", "No"]),
-            "applicationDate": app_date.strftime("%Y-%m-%d"),
+            "applicationDate": app_timestamp.strftime("%Y-%m-%d"),
+            "agronomistName": agron,
+            "moisturePercentage": None,
+            "defectRate": None,
+            "yieldTons": None,
+            "submissionStatus": "Approved",
+            "submissionTimestamp": app_timestamp.strftime("%Y-%m-%d %H:%M:%S.000000 UTC"),
+            "cropType": crop_type,
+            "equipmentModel": seeding_rec["equipmentModel"],
+            "totalFuelGal": round(random.uniform(15.0, 45.0), 1),
+            "fuelRateGalAc": round(random.uniform(0.5, 1.2), 2),
+            "productivityAcHr": round(random.uniform(10.0, 22.0), 1),
+            "areaSeededAc": None,
+            "appliedRateSeedsAc": None,
+            "targetRateSeedsAc": None,
+            "cropStage": "Application"
+        }
+        records.append(app_rec)
+
+        # 3. HARVEST LOG
+        if irr in ["Drip", "Center Pivot"]:
+            moisture = round(random.uniform(13.0, 16.5), 1)
+            defect = round(random.uniform(1.0, 3.8), 1)
+            yield_multiplier = random.uniform(1.2, 1.6)
+        else:
+            moisture = round(random.choice([random.uniform(9.0, 11.5), random.uniform(18.2, 21.5), random.uniform(13.0, 16.0)]), 1)
+            defect = round(random.choice([random.uniform(0.5, 3.5), random.uniform(4.5, 9.8)]), 1)
+            yield_multiplier = random.uniform(0.6, 1.1)
+
+        yield_tons = round(random.uniform(25.0, 45.0) * yield_multiplier, 1)
+
+        # Status rules
+        if defect > 8.0 or moisture > 21.0 or moisture < 10.0:
+            status = "Flagged"
+        elif defect > 4.0 or moisture > 18.0:
+            status = "Pending"
+        else:
+            status = "Approved"
+
+        harvest_rec = {
+            "id": f"LOG-H-{3000 + plot_idx}",
+            "fieldName": fieldName,
+            "variety": variety,
+            "country": grower["country"],
+            "vendorName": grower["vendor"],
+            "growerName": grower["name"],
+            "cropSeason": str(base_year),
+            "fieldLocation": location_poly,
+            "region": grower["region"],
+            "vendorContact": grower["contact"],
+            "cipcApplied": None,
+            "activeIngredientRate": None,
+            "irrigationType": irr,
+            "nApplied": None,
+            "nTotal": None,
+            "pTotal": None,
+            "kTotal": None,
+            "vrtUsed": None,
+            "fertilizerType": None,
+            "fertilizerNature": None,
+            "nitrogenAnalysis": None,
+            "ammoniaPercentage": None,
+            "nitricPercentage": None,
+            "ureaPercentage": None,
+            "phosphateAnalysis": None,
+            "potassiumAnalysis": None,
+            "applicationRate": None,
+            "applicationMethod": None,
+            "emissionsInhibitors": None,
+            "applicationDate": None,
             "agronomistName": agron,
             "moisturePercentage": moisture,
             "defectRate": defect,
             "yieldTons": yield_tons,
             "submissionStatus": status,
-            "submissionTimestamp": sub_date.strftime("%Y-%m-%d %H:%M:%S.000000 UTC"),
+            "submissionTimestamp": harvest_timestamp.strftime("%Y-%m-%d %H:%M:%S.000000 UTC"),
             "cropType": crop_type,
-            "equipmentModel": equipment,
-            "totalFuelGal": fuel_gal,
-            "fuelRateGalAc": fuel_rate,
-            "productivityAcHr": productivity,
-            "areaSeededAc": area_seeded,
-            "appliedRateSeedsAc": applied_rate,
-            "targetRateSeedsAc": target_rate
+            "equipmentModel": seeding_rec["equipmentModel"],
+            "totalFuelGal": round(random.uniform(30.0, 85.0), 1),
+            "fuelRateGalAc": round(random.uniform(0.8, 2.0), 2),
+            "productivityAcHr": round(random.uniform(6.0, 14.0), 1),
+            "areaSeededAc": None,
+            "appliedRateSeedsAc": None,
+            "targetRateSeedsAc": None,
+            "cropStage": "Harvest"
         }
-        records.append(rec)
-        
+        records.append(harvest_rec)
+
     return records
 
 if __name__ == "__main__":
