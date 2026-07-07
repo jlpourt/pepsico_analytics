@@ -60,7 +60,15 @@ async function getRecords() {
         ureaPercentage: r.ureaPercentage !== null ? String(r.ureaPercentage) : '',
         phosphateAnalysis: r.phosphateAnalysis !== null ? String(r.phosphateAnalysis) : '',
         potassiumAnalysis: r.potassiumAnalysis !== null ? String(r.potassiumAnalysis) : '',
-        applicationRate: r.applicationRate !== null ? String(r.applicationRate) : ''
+        applicationRate: r.applicationRate !== null ? String(r.applicationRate) : '',
+        cropType: r.cropType || 'Potatoes',
+        equipmentModel: r.equipmentModel || '',
+        totalFuelGal: r.totalFuelGal !== null ? String(r.totalFuelGal) : '',
+        fuelRateGalAc: r.fuelRateGalAc !== null ? String(r.fuelRateGalAc) : '',
+        productivityAcHr: r.productivityAcHr !== null ? String(r.productivityAcHr) : '',
+        areaSeededAc: r.areaSeededAc !== null ? String(r.areaSeededAc) : '',
+        appliedRateSeedsAc: r.appliedRateSeedsAc !== null ? String(r.appliedRateSeedsAc) : '',
+        targetRateSeedsAc: r.targetRateSeedsAc !== null ? String(r.targetRateSeedsAc) : ''
       };
     });
   } catch (error) {
@@ -83,13 +91,15 @@ async function saveRecord(record) {
         cipcApplied, activeIngredientRate, irrigationType, nApplied, nTotal, pTotal, kTotal, vrtUsed,
         fertilizerType, fertilizerNature, nitrogenAnalysis, ammoniaPercentage, nitricPercentage, ureaPercentage,
         phosphateAnalysis, potassiumAnalysis, applicationRate, applicationMethod, emissionsInhibitors, applicationDate,
-        agronomistName, moisturePercentage, defectRate, yieldTons, submissionStatus, submissionTimestamp
+        agronomistName, moisturePercentage, defectRate, yieldTons, submissionStatus, submissionTimestamp,
+        cropType, equipmentModel, totalFuelGal, fuelRateGalAc, productivityAcHr, areaSeededAc, appliedRateSeedsAc, targetRateSeedsAc
       ) VALUES (
         @id, @fieldName, @variety, @country, @vendorName, @growerName, @cropSeason, @fieldLocation, @region, @vendorContact,
         @cipcApplied, @activeIngredientRate, @irrigationType, @nApplied, @nTotal, @pTotal, @kTotal, @vrtUsed,
         @fertilizerType, @fertilizerNature, @nitrogenAnalysis, @ammoniaPercentage, @nitricPercentage, @ureaPercentage,
         @phosphateAnalysis, @potassiumAnalysis, @applicationRate, @applicationMethod, @emissionsInhibitors, @applicationDate,
-        @agronomistName, @moisturePercentage, @defectRate, @yieldTons, @submissionStatus, CURRENT_TIMESTAMP()
+        @agronomistName, @moisturePercentage, @defectRate, @yieldTons, @submissionStatus, CURRENT_TIMESTAMP(),
+        @cropType, @equipmentModel, @totalFuelGal, @fuelRateGalAc, @productivityAcHr, @areaSeededAc, @appliedRateSeedsAc, @targetRateSeedsAc
       )
     `;
     
@@ -135,7 +145,15 @@ async function saveRecord(record) {
       moisturePercentage: safeFloat(record.moisturePercentage),
       defectRate: safeFloat(record.defectRate),
       yieldTons: safeFloat(record.yieldTons),
-      submissionStatus: submissionStatus
+      submissionStatus: submissionStatus,
+      cropType: record.cropType || 'Potatoes',
+      equipmentModel: record.equipmentModel || null,
+      totalFuelGal: safeFloat(record.totalFuelGal),
+      fuelRateGalAc: safeFloat(record.fuelRateGalAc),
+      productivityAcHr: safeFloat(record.productivityAcHr),
+      areaSeededAc: safeFloat(record.areaSeededAc),
+      appliedRateSeedsAc: record.appliedRateSeedsAc ? parseInt(record.appliedRateSeedsAc) : null,
+      targetRateSeedsAc: record.targetRateSeedsAc ? parseInt(record.targetRateSeedsAc) : null
     };
     
     await bigquery.query({

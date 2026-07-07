@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
 
-export default function InteractiveMap({ fields, selectedRegion, selectedLayer = 'yield' }) {
+export default function InteractiveMap({ fields, selectedRegion, selectedLayer = 'yield', onFieldClick }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const polygonLayerGroupRef = useRef(null);
@@ -96,6 +96,11 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
           mapElement.setStyle({ fillOpacity: 0.70, weight: 1.5, color: '#ffffff' });
         });
       }
+
+      // Bind click triggers
+      mapElement.on('click', () => {
+        if (onFieldClick) onFieldClick(f.id);
+      });
 
       // Bind detailed telemetry popup
       mapElement.bindPopup(`
@@ -202,7 +207,7 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
     } else {
       map.setView([20, 0], 2);
     }
-  }, [fields, selectedRegion, selectedLayer]);
+  }, [fields, selectedRegion, selectedLayer, onFieldClick]);
 
   // Keep event zoomend listener synced with the latest active fields and layers
   useEffect(() => {
@@ -216,7 +221,7 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
         drawMapLayers(map, polygonLayerGroupRef.current, fields, selectedLayer);
       }
     });
-  }, [fields, selectedLayer]);
+  }, [fields, selectedLayer, onFieldClick]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '380px' }}>

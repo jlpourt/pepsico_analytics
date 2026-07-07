@@ -50,7 +50,15 @@ const BASE_MOCK_EXTRACTION = {
   moisturePercentage: "13.8",
   defectRate: "1.8",
   yieldTons: "48.9",
-  bankDetails: "US89370400049281"
+  bankDetails: "US89370400049281",
+  cropType: "Potatoes",
+  equipmentModel: "John Deere 8295R",
+  totalFuelGal: "32.5",
+  fuelRateGalAc: "1.10",
+  productivityAcHr: "14.2",
+  areaSeededAc: "29.5",
+  appliedRateSeedsAc: null,
+  targetRateSeedsAc: null
 };
 
 /**
@@ -102,6 +110,14 @@ Fields to extract (JSON keys):
 - moisturePercentage (Moisture level of the batch/potatoes, typical range 10-25%)
 - defectRate (Defect percentage, typical range 0-15%)
 - yieldTons (Estimated or actual harvest weight in tons)
+- cropType (Crop Type seeded, e.g. Potatoes, Soybeans, or Corn. Default is Potatoes)
+- equipmentModel (Model ID of the machine, e.g. John Deere 8295R)
+- totalFuelGal (Total fuel burned during operation in gallons)
+- fuelRateGalAc (Fuel burn rate per acre in gal/ac)
+- productivityAcHr (Acres worked per hour in ac/hr)
+- areaSeededAc (Total area seeded in acres)
+- appliedRateSeedsAc (Actual seeding application rate in seeds/ac)
+- targetRateSeedsAc (Target seeding rate in seeds/ac)
 
 Respond ONLY with a valid JSON object matching this schema. Do not enclose it in markdown code blocks.
 `;
@@ -166,6 +182,24 @@ function mockParseText(text) {
     res.bankDetails = "MX5480400049281";
   }
 
+  // Seeding logs trigger
+  if (t.includes("soybeans") || t.includes("seeding") || t.includes("corn")) {
+    res.cropType = t.includes("soybeans") ? "Soybeans" : t.includes("corn") ? "Corn" : "Potatoes";
+    res.equipmentModel = "John Deere 8295R";
+    res.fieldName = "Field-1";
+    res.growerName = "John Deere Operator";
+    res.vendorName = "Merriweather Farm";
+    res.cropSeason = "2013";
+    res.fieldLocation = "POLYGON((-93.5937 41.5868, -93.5737 41.5868, -93.5737 41.6068, -93.5937 41.6068, -93.5937 41.5868))";
+    res.areaSeededAc = "5.7";
+    res.appliedRateSeedsAc = "152000";
+    res.targetRateSeedsAc = "165000";
+    res.totalFuelGal = "3.1";
+    res.fuelRateGalAc = "0.50";
+    res.productivityAcHr = "15.8";
+    res.yieldTons = "34.5";
+  }
+
   // Regex selectors for numeric values
   const moistureMatch = text.match(/(?:moisture|water).*?(\d+(?:\.\d+)?)/i);
   if (moistureMatch) {
@@ -180,6 +214,11 @@ function mockParseText(text) {
   const yieldMatch = text.match(/(?:yield|harvest|volume).*?(\d+(?:\.\d+)?)/i);
   if (yieldMatch) {
     res.yieldTons = String(yieldMatch[1]);
+  }
+  
+  const fuelRateMatch = text.match(/(?:fuel rate|fuel rate \(area\)).*?(\d+(?:\.\d+)?)/i);
+  if (fuelRateMatch) {
+    res.fuelRateGalAc = String(fuelRateMatch[1]);
   }
 
   const seasonMatch = text.match(/(?:season|year).*?(\d{4})/i);

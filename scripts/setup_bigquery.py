@@ -24,6 +24,10 @@ def setup_bigquery():
         return False
     print("Dataset 'agriflow' verified/created.")
 
+    # Drop existing table to ensure schema updates are applied
+    drop_table_sql = "DROP TABLE IF EXISTS agriflow.grower_submissions"
+    run_bq_command(["query", "--use_legacy_sql=false", drop_table_sql])
+
     # 2. Define grower_submissions table SQL
     create_table_sql = """
     CREATE TABLE IF NOT EXISTS agriflow.grower_submissions (
@@ -62,7 +66,15 @@ def setup_bigquery():
       defectRate FLOAT64,
       yieldTons FLOAT64,
       submissionStatus STRING,
-      submissionTimestamp TIMESTAMP
+      submissionTimestamp TIMESTAMP,
+      cropType STRING,
+      equipmentModel STRING,
+      totalFuelGal FLOAT64,
+      fuelRateGalAc FLOAT64,
+      productivityAcHr FLOAT64,
+      areaSeededAc FLOAT64,
+      appliedRateSeedsAc INT64,
+      targetRateSeedsAc INT64
     )
     """
     success, output = run_bq_command(["query", "--use_legacy_sql=false", create_table_sql])
@@ -200,7 +212,24 @@ def generate_seed_data():
         days_ago = random.randint(10, 360)
         sub_date = datetime.now() - timedelta(days=days_ago)
         app_date = sub_date - timedelta(days=random.randint(30, 90))
+
+        # Crop Rotation Telemetry Generator
+        crop_type = random.choice(["Potatoes", "Potatoes", "Potatoes", "Soybeans", "Corn"])
+        equipment = random.choice(["John Deere 8295R", "John Deere 8R 370", "Case IH Magnum 340", "New Holland T8"])
         
+        if crop_type == "Potatoes":
+            area_seeded = round(random.uniform(20.0, 50.0), 1)
+            applied_rate = None
+            target_rate = None
+        else:
+            area_seeded = round(random.uniform(5.0, 30.0), 1)
+            applied_rate = random.choice([140000, 150000, 160000])
+            target_rate = 150000
+            
+        fuel_gal = round(random.uniform(10.0, 45.0), 1)
+        fuel_rate = round(random.uniform(0.6, 1.8), 2)
+        productivity = round(random.uniform(8.0, 18.0), 1)
+
         rec = {
             "id": submission_id,
             "fieldName": f"Field-{random.randint(100, 199)}",
@@ -237,7 +266,15 @@ def generate_seed_data():
             "defectRate": defect,
             "yieldTons": yield_tons,
             "submissionStatus": status,
-            "submissionTimestamp": sub_date.strftime("%Y-%m-%d %H:%M:%S.000000 UTC")
+            "submissionTimestamp": sub_date.strftime("%Y-%m-%d %H:%M:%S.000000 UTC"),
+            "cropType": crop_type,
+            "equipmentModel": equipment,
+            "totalFuelGal": fuel_gal,
+            "fuelRateGalAc": fuel_rate,
+            "productivityAcHr": productivity,
+            "areaSeededAc": area_seeded,
+            "appliedRateSeedsAc": applied_rate,
+            "targetRateSeedsAc": target_rate
         }
         records.append(rec)
         

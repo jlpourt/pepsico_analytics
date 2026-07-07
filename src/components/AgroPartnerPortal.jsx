@@ -239,7 +239,8 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
   const categories = {
     'Foundation Critical': ['fieldName', 'variety', 'country', 'vendorName', 'growerName', 'cropSeason', 'fieldLocation'],
     'Foundation Recommended': ['region', 'vendorContact', 'cipcApplied', 'activeIngredientRate', 'irrigationType', 'moisturePercentage', 'defectRate', 'yieldTons'],
-    'Advanced Insights': ['agronomistName', 'nApplied', 'nTotal', 'pTotal', 'kTotal', 'vrtUsed', 'fertilizerType', 'fertilizerNature', 'nitrogenAnalysis', 'phosphateAnalysis', 'potassiumAnalysis', 'applicationRate', 'applicationMethod', 'emissionsInhibitors', 'applicationDate']
+    'Advanced Insights': ['agronomistName', 'nApplied', 'nTotal', 'pTotal', 'kTotal', 'vrtUsed', 'fertilizerType', 'fertilizerNature', 'nitrogenAnalysis', 'phosphateAnalysis', 'potassiumAnalysis', 'applicationRate', 'applicationMethod', 'emissionsInhibitors', 'applicationDate'],
+    'Machinery Telemetry': ['cropType', 'equipmentModel', 'totalFuelGal', 'fuelRateGalAc', 'productivityAcHr', 'areaSeededAc', 'appliedRateSeedsAc', 'targetRateSeedsAc']
   };
 
   const fieldLabels = {
@@ -250,7 +251,7 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
     cropSeason: 'Crop Season',
     vendorContact: 'Vendor Contact',
     fieldName: 'Field Name',
-    variety: 'Potato Variety',
+    variety: 'Crop Variety / Genotype',
     fieldLocation: 'GPS Coordinates WKT',
     agronomistName: 'PepsiCo Agronomist',
     irrigationType: 'Irrigation Type',
@@ -272,7 +273,15 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
     activeIngredientRate: 'Active Ing Rate',
     moisturePercentage: 'Moisture Percentage %',
     defectRate: 'Defect Rate %',
-    yieldTons: 'Yield (Tons)'
+    yieldTons: 'Yield (Tons)',
+    cropType: 'Crop Type',
+    equipmentModel: 'Machine Model (John Deere)',
+    totalFuelGal: 'Total Fuel Burned (Gallons)',
+    fuelRateGalAc: 'Fuel Burn Rate (Gal/Ac)',
+    productivityAcHr: 'Productivity Rate (Ac/Hr)',
+    areaSeededAc: 'Area Seeded (Acres)',
+    appliedRateSeedsAc: 'Applied Seeding Rate (seeds/ac)',
+    targetRateSeedsAc: 'Target Seeding Rate (seeds/ac)'
   };
 
   // Demo loaders
@@ -802,8 +811,30 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
           {/* Scrollable list of fields */}
           <div className="scrollable-fields" style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '2px' }}>
             {categories[activeCategory].map(key => {
-              const val = extractedData[key];
+              let val = extractedData[key];
               const isMissing = val === null || val === undefined || val === '';
+              
+              // Apply smart rules
+              const isRotation = extractedData.cropType && extractedData.cropType !== 'Potatoes';
+              let isDisabled = false;
+              let warningMsg = '';
+
+              if (isRotation) {
+                if (key === 'cipcApplied') {
+                  val = 'None';
+                  isDisabled = true;
+                  warningMsg = 'Disabled for rotation crops';
+                }
+                if (key === 'activeIngredientRate') {
+                  val = '0';
+                  isDisabled = true;
+                  warningMsg = 'Disabled for rotation crops';
+                }
+              }
+
+              if (key === 'fuelRateGalAc' && parseFloat(val) > 1.5) {
+                warningMsg = '⚠ High Fuel Burn (>1.5 gal/ac)';
+              }
               
               return (
                 <div 
@@ -813,14 +844,20 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
                     padding: '6px 8px',
                     marginBottom: 0,
                     border: isMissing ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid var(--border-card)',
-                    backgroundColor: isMissing ? 'rgba(245, 158, 11, 0.02)' : 'rgba(255, 255, 255, 0.01)'
+                    backgroundColor: isMissing ? 'rgba(245, 158, 11, 0.02)' : 'rgba(255, 255, 255, 0.01)',
+                    opacity: isDisabled ? 0.6 : 1
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
                     <label style={{ fontSize: '0.58rem', color: isMissing ? '#fdc77f' : 'var(--text-secondary)' }}>
                       {fieldLabels[key] || key} {isMissing && '*'}
                     </label>
-                    {isMissing && (
+                    {warningMsg && (
+                      <span style={{ fontSize: '0.52rem', color: '#fdc77f', fontWeight: 'bold' }}>
+                        {warningMsg}
+                      </span>
+                    )}
+                    {isMissing && !warningMsg && (
                       <span style={{ fontSize: '0.5rem', color: '#fdc77f', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
                         <AlertTriangle size={8} /> Missing
                       </span>
@@ -830,9 +867,14 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
                     type="text"
                     value={val !== null && val !== undefined ? val : ''}
                     onChange={(e) => handleFieldChange(key, e.target.value)}
-                    placeholder="Empty field"
+                    placeholder={isDisabled ? 'Not applicable' : 'Empty field'}
                     className="field-input"
-                    style={{ padding: '4px 6px', fontSize: '0.68rem' }}
+                    disabled={isDisabled}
+                    style={{ 
+                      padding: '4px 6px', 
+                      fontSize: '0.68rem',
+                      cursor: isDisabled ? 'not-allowed' : 'text'
+                    }}
                   />
                 </div>
               );
