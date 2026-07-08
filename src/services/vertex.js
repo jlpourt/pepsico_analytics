@@ -183,8 +183,74 @@ function mockParseText(text) {
     res.bankDetails = "MX5480400049281";
   }
 
+  // Custom file matches from pepsico_data/
+  if (t.includes("atrazine") || t.includes("3x di") || t.includes("single product")) {
+    res.cropStage = "Application";
+    res.cropType = "Potatoes";
+    res.fieldName = "Field-104";
+    res.growerName = "John Miller";
+    res.vendorName = "Midwest Spuds Inc";
+    res.fertilizerType = "Atrazine";
+    res.fertilizerNature = "Mineral";
+    res.nApplied = "0.0";
+    res.applicationRate = "0.16";
+    res.applicationMethod = "Broadcast";
+    res.applicationDate = "2017-11-29";
+    res.equipmentModel = "John Deere 8295R";
+    res.totalFuelGal = "0.5";
+    res.fuelRateGalAc = "0.15";
+    
+    res.areaSeededAc = null;
+    res.appliedRateSeedsAc = null;
+    res.targetRateSeedsAc = null;
+    res.yieldTons = null;
+    res.moisturePercentage = null;
+    res.defectRate = null;
+  }
+  else if (t.includes("tank mix") || t.includes("ams") || t.includes("counter")) {
+    res.cropStage = "Application";
+    res.cropType = "Potatoes";
+    res.fieldName = "Field-105";
+    res.growerName = "John Miller";
+    res.vendorName = "Midwest Spuds Inc";
+    res.fertilizerType = "AMS + Counter Tank Mix";
+    res.fertilizerNature = "Mineral";
+    res.nApplied = "0.0";
+    res.applicationRate = "9.95";
+    res.applicationMethod = "Broadcast";
+    res.applicationDate = "2017-11-29";
+    res.equipmentModel = "John Deere 8295R";
+    res.totalFuelGal = "0.5";
+    res.fuelRateGalAc = "0.10";
+    
+    res.areaSeededAc = null;
+    res.appliedRateSeedsAc = null;
+    res.targetRateSeedsAc = null;
+    res.yieldTons = null;
+    res.moisturePercentage = null;
+    res.defectRate = null;
+  }
+  else if (t.includes("merriweather") || t.includes("land:") || t.includes("workable area")) {
+    res.cropStage = "Seeding";
+    res.cropType = "Soybeans";
+    res.fieldName = "Field-1";
+    res.growerName = "John Miller";
+    res.vendorName = "Merriweather Farm";
+    res.cropSeason = "2025";
+    res.areaSeededAc = "2494.83";
+    res.equipmentModel = "John Deere 8295R";
+    res.totalFuelGal = "450.0";
+    res.fuelRateGalAc = "0.18";
+    
+    res.yieldTons = null;
+    res.moisturePercentage = null;
+    res.defectRate = null;
+    res.nApplied = null;
+    res.applicationDate = null;
+    res.fertilizerType = null;
+  }
   // Seeding logs trigger
-  if (t.includes("seeding") || t.includes("soybeans") || t.includes("corn")) {
+  else if (t.includes("seeding") || t.includes("soybeans") || t.includes("corn")) {
     res.cropStage = "Seeding";
     res.cropType = t.includes("soybeans") ? "Soybeans" : t.includes("corn") ? "Corn" : "Potatoes";
     res.equipmentModel = "John Deere 8295R";
