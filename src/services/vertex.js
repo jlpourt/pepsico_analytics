@@ -58,7 +58,22 @@ const BASE_MOCK_EXTRACTION = {
   productivityAcHr: "14.2",
   areaSeededAc: "29.5",
   appliedRateSeedsAc: null,
-  targetRateSeedsAc: null
+  targetRateSeedsAc: null,
+  _confidence: {
+    fieldName: 0.98,
+    variety: 0.95,
+    country: 0.99,
+    vendorName: 0.97,
+    growerName: 0.98,
+    cropSeason: 0.99,
+    fieldLocation: 0.92,
+    region: 0.99,
+    moisturePercentage: 0.65,
+    defectRate: 0.72,
+    yieldTons: 0.94,
+    equipmentModel: 0.89,
+    areaSeededAc: 0.95
+  }
 };
 
 /**
@@ -120,7 +135,19 @@ Fields to extract (JSON keys):
 - targetRateSeedsAc (Target seeding rate in seeds/ac)
 - cropStage (Stage of the log submission: "Seeding", "Application", or "Harvest". Determine based on parameters in report)
 
-Respond ONLY with a valid JSON object matching this schema. Do not enclose it in markdown code blocks.
+Respond ONLY with a valid JSON object matching this schema. Inside the JSON object, you MUST include a key "_confidence" which maps to an object containing estimated confidence scores between 0.00 and 1.00 for each of the extracted parameter keys.
+Example structure:
+{
+  "fieldName": "...",
+  "variety": "...",
+  ...,
+  "_confidence": {
+    "fieldName": 0.95,
+    "variety": 0.88,
+    "moisturePercentage": 0.45
+  }
+}
+Do not enclose the JSON response in markdown code blocks.
 `;
 
   try {
@@ -571,7 +598,105 @@ function mockQueryResponse(queryText, records) {
          `How can I assist you with quality auditing today? (Try asking: *"Any high moisture warnings?"* or *"Summarize variety yields"*).`;
 }
 
+/**
+ * Heuristic fallback generator when Vertex AI is offline or blocked.
+ * Incorporates 4 rich agronomic rules.
+ */
+function getHolisticHealthFallback(fieldName, ndvi, soilMoisture, timelineEvents = []) {
+  const numericNdvi = parseFloat(ndvi);
+  const numericSoilMoisture = parseFloat(soilMoisture);
+
+  const hasFlagged = timelineEvents.some(e => e.status === 'Flagged');
+  const hasHighMoisture = timelineEvents.some(e => parseFloat(e.moisture) > 18.0);
+  const hasHighDefects = timelineEvents.some(e => parseFloat(e.defectRate) > 8.0);
+
+  let score = 'A';
+  let advisory = 'Optimal growing conditions detected. Vegetation index and soil moisture are within target ranges with no compliance alerts.';
+
+  if (hasFlagged || hasHighMoisture || hasHighDefects) {
+    if (hasFlagged) {
+      score = 'F';
+      advisory = `Critical compliance warning for field ${fieldName}: submissions have been flagged. Immediate agronomist review is required to address compliance errors.`;
+    } else {
+      score = 'D';
+      if (hasHighMoisture && hasHighDefects) {
+        advisory = `Quality warning for field ${fieldName}: harvest records show both high moisture levels (>18%) and elevated defect rates. Crop storage risk is critical.`;
+      } else if (hasHighMoisture) {
+        advisory = `Moisture compliance warning for field ${fieldName}: harvest moisture levels exceed the 18% optimal limit. Specialized cell storage or immediate processing is recommended.`;
+      } else {
+        advisory = `Defect warning for field ${fieldName}: harvest records indicate defect rates exceeding acceptable quality standards (>8%). Inspect harvesting equipment.`;
+      }
+    }
+  } else if (numericNdvi < 0.60) {
+    score = numericNdvi < 0.45 ? 'D' : 'C';
+    advisory = `Vegetation stress detected for field ${fieldName} with a satellite NDVI of ${numericNdvi.toFixed(2)}. Suggests delayed canopy development or potential pest impact.`;
+  } else if (numericSoilMoisture < 15.0) {
+    score = numericSoilMoisture < 10.0 ? 'D' : 'C';
+    advisory = `Dry soil conditions detected for field ${fieldName} (Soil Moisture: ${numericSoilMoisture.toFixed(1)}%). Consider increasing center-pivot irrigation cycles to alleviate crop water stress.`;
+  }
+
+  return { score, advisory };
+}
+
+/**
+ * Computes letter grade and agronomic advisory for the field based on satellite readings and BQ timeline.
+ * Integrates with Vertex AI Gemini 3.5 Flash; falls back to robust agronomic heuristics if unavailable.
+ */
+async function getHolisticHealth(fieldName, ndvi, soilMoisture, timelineEvents) {
+  const prompt = `
+You are an expert Frito-Lay agronomic advisor.
+Analyze the following parameters and historical crop stages timeline for field "${fieldName}":
+- Satellite NDVI (Vegetation Index): ${ndvi}
+- Satellite Soil Moisture: ${soilMoisture}%
+- Historical crop stages timeline events from BigQuery:
+${JSON.stringify(timelineEvents, null, 2)}
+
+Provide an overall crop health analysis.
+Return a JSON object containing:
+- "score": A single letter grade representing overall plot health. Choose from: 'A' (optimal conditions), 'B' or 'C' (mild warnings/stresses), 'D' or 'F' (severe anomalies, defects, or compliance issues).
+- "advisory": A concise 2-3 sentence agronomic advisory highlighting exact correlations between the satellite readings (NDVI, soil moisture) and the historical crop log activities (e.g. seeding dates, chemical application timings, yields, moisture compliance warnings).
+
+Respond ONLY with a valid JSON object matching this schema. Do not include markdown code block formatting (like \`\`\`json).
+{
+  "score": "A",
+  "advisory": "..."
+}
+`;
+
+  try {
+    if (!ai) {
+      throw new Error("Vertex AI client not initialized");
+    }
+
+    console.log(`Calling live Vertex AI Gemini 3.5 Flash for field ${fieldName}...`);
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: prompt
+    });
+
+    const text = response.text;
+    console.log("Gemini Holistic Health Response:", text);
+    
+    let cleanText = text.trim();
+    if (cleanText.startsWith('```')) {
+      cleanText = cleanText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+    }
+
+    const result = JSON.parse(cleanText);
+    if (!result.score || !result.advisory) {
+      throw new Error("Missing score or advisory fields in Gemini response");
+    }
+    return result;
+
+  } catch (error) {
+    console.warn(`Vertex AI getHolisticHealth Call Failed. Using fallback heuristics:`, error.message);
+    return getHolisticHealthFallback(fieldName, ndvi, soilMoisture, timelineEvents);
+  }
+}
+
 module.exports = {
   parseUploadedDocument,
-  queryAnalyticsData
+  queryAnalyticsData,
+  getHolisticHealth
 };
+

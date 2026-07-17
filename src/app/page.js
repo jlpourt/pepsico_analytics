@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import MobileFrame from '../components/MobileFrame';
 import AgroPartnerPortal from '../components/AgroPartnerPortal';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
-import AnalyticsChat from '../components/AnalyticsChat';
 import { BarChart3, Bot, LayoutDashboard, UploadCloud, Settings, Bell, Search, User, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export default function Home() {
@@ -20,144 +19,20 @@ export default function Home() {
   return (
     <div className="app-shell" style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-primary)', transition: 'background-color 0.3s ease' }}>
       
-      {/* 1. Left Sidebar Navigation (Unified Dark Glassmorphic Sidebar) */}
-      <aside style={{
-        position: 'fixed',
-        left: 0,
-        top: 0,
-        height: '100vh',
-        width: '18rem', // Width: 288px (Stitch w-72)
-        backgroundColor: 'var(--bg-sidebar)',
-        borderRight: '1px solid var(--border-card)',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 50,
-        padding: '1.5rem',
-        boxShadow: '4px 0 20px rgba(0, 0, 0, 0.15)',
-        transform: isSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-      }}>
-        {/* Brandmark Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem' }}>
-          <div style={{
-            width: '2.25rem',
-            height: '2.25rem',
-            borderRadius: '50%',
-            backgroundColor: 'var(--frito-red)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontWeight: 'bold',
-            fontSize: '0.9rem',
-            boxShadow: '0 0 10px rgba(186, 26, 26, 0.4)'
-          }}>
-            FL
-          </div>
-          <span style={{ fontSize: '1.1rem', fontWeight: '800', tracking: '-0.02em', color: 'var(--text-primary)' }}>
-            Field-to-Fleet
-          </span>
-        </div>
-
-        {/* Navigation items */}
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-          <button style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            padding: '0.75rem 1rem',
-            border: 'none',
-            borderRadius: '8px',
-            backgroundColor: 'transparent',
-            color: 'var(--text-muted)',
-            fontSize: '0.85rem',
-            fontWeight: '600',
-            textAlign: 'left',
-            cursor: 'not-allowed',
-            opacity: 0.4
-          }} disabled>
-            <LayoutDashboard size={18} /> Fleet Overview
-          </button>
-          
-          <button
-            onClick={() => setActiveView('dashboard')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              padding: '0.75rem 1rem',
-              border: 'none',
-              borderRadius: '8px',
-              backgroundColor: activeView === 'dashboard' ? 'rgba(186, 26, 26, 0.1)' : 'transparent',
-              color: activeView === 'dashboard' ? '#ff897a' : 'var(--text-secondary)',
-              fontSize: '0.85rem',
-              fontWeight: activeView === 'dashboard' ? '700' : '600',
-              width: '100%',
-              textAlign: 'left',
-              cursor: 'pointer',
-              borderRight: activeView === 'dashboard' ? '4px solid var(--frito-red)' : 'none'
-            }}
-          >
-            <BarChart3 size={18} /> Agronomy Analytics
-          </button>
-          
-          <button style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            padding: '0.75rem 1rem',
-            border: 'none',
-            borderRadius: '8px',
-            backgroundColor: 'transparent',
-            color: 'var(--text-muted)',
-            fontSize: '0.85rem',
-            fontWeight: '600',
-            textAlign: 'left',
-            cursor: 'not-allowed',
-            opacity: 0.4,
-            width: '100%'
-          }} disabled>
-            <UploadCloud size={18} /> Field Ingestion
-          </button>
-
-          <div style={{ marginTop: 'auto' }}>
-            <button style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              padding: '0.75rem 1rem',
-              border: 'none',
-              borderRadius: '8px',
-              backgroundColor: 'transparent',
-              color: 'var(--text-muted)',
-              fontSize: '0.85rem',
-              fontWeight: '600',
-              width: '100%',
-              textAlign: 'left',
-              cursor: 'not-allowed',
-              opacity: 0.4
-            }} disabled>
-              <Settings size={18} /> Settings
-            </button>
-          </div>
-        </nav>
-      </aside>
-
-      {/* Main Container shifted right by sidebar width */}
+      {/* Main Container */}
       <div style={{ 
-        marginLeft: isSidebarOpen ? '18rem' : '0', 
+        marginLeft: '0', 
         flex: 1, 
         display: 'flex', 
         flexDirection: 'column', 
         minHeight: '100vh',
-        transition: 'margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
         
         {/* 2. Top Header Navbar (Translucent Dark Frosted Navbar) */}
         <header style={{
           position: 'fixed',
           top: 0,
-          left: isSidebarOpen ? '18rem' : '0',
+          left: 0,
           right: 0,
           height: '4rem', // 64px
           backgroundColor: 'rgba(3, 7, 18, 0.8)',
@@ -169,30 +44,16 @@ export default function Home() {
           padding: '0 2rem',
           zIndex: 40,
           boxShadow: '0 1px 12px rgba(0, 0, 0, 0.2)',
-          transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <button
-              onClick={() => setIsSidebarOpen(prev => !prev)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '6px',
-                borderRadius: '6px',
-                backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid var(--border-card)',
-                transition: 'all 0.2s'
-              }}
-            >
-              {isSidebarOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
-            </button>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1.2px', color: 'var(--text-secondary)' }}>
-              Operations Hub
+            {/* PepsiCo Globe SVG Logo */}
+            <svg viewBox="0 0 100 100" width="30" height="30" style={{ marginRight: '2px', filter: 'drop-shadow(0 2px 6px rgba(0, 47, 108, 0.5))' }}>
+              <circle cx="50" cy="50" r="48" fill="#002F6C" />
+              <path d="M 4 50 C 20 15, 80 15, 96 50 C 80 60, 20 60, 4 50" fill="#FFFFFF" />
+              <path d="M 4 50 C 20 60, 80 60, 96 50 C 90 78, 72 96, 50 96 C 28 96, 10 78, 4 50" fill="#E31937" />
+            </svg>
+            <span style={{ fontSize: '1.05rem', fontWeight: '800', tracking: '-0.02em', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              AgriFlow <span style={{ fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)', backgroundColor: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border-card)' }}>Operations Hub</span>
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
@@ -257,51 +118,11 @@ export default function Home() {
                     <h3 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text-primary)', margin: 0 }}>Agronomy Hub</h3>
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>Real-time telemetry and grower ingestion audit panels.</p>
                   </div>
-                  
-                  {/* Dashboard / Chat View toggles */}
-                  <div style={{ display: 'flex', backgroundColor: 'var(--bg-secondary)', padding: '3px', borderRadius: '8px', border: '1.5px solid var(--border-card)' }}>
-                    <button
-                      onClick={() => setActiveView('dashboard')}
-                      style={{
-                        backgroundColor: activeView === 'dashboard' ? 'var(--frito-red)' : 'transparent',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '6px',
-                        padding: '4px 12px',
-                        fontSize: '0.72rem',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      Dashboard
-                    </button>
-                    <button
-                      onClick={() => setActiveView('chat')}
-                      style={{
-                        backgroundColor: activeView === 'chat' ? 'var(--frito-red)' : 'transparent',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '6px',
-                        padding: '4px 12px',
-                        fontSize: '0.72rem',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      AI Analyst
-                    </button>
-                  </div>
                 </div>
 
                 {/* Main Content Render */}
                 <div style={{ borderTop: '1px solid var(--border-card)', paddingTop: '1rem' }}>
-                  {activeView === 'dashboard' ? (
-                    <AnalyticsDashboard refreshTrigger={refreshTrigger} />
-                  ) : (
-                    <AnalyticsChat />
-                  )}
+                  <AnalyticsDashboard refreshTrigger={refreshTrigger} />
                 </div>
               </div>
             </div>

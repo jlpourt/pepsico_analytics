@@ -86,24 +86,51 @@ async function saveRecord(record) {
     const id = record.id || `REC-${Math.floor(1000 + Math.random() * 9000)}`;
     const submissionStatus = record.submissionStatus || 'Approved';
     
+    // Resolve growerId based on growerName or vendorName
+    let growerId = 'grower-John-Doe'; // Default fallback
+    if (record.growerName) {
+      const gName = record.growerName.toLowerCase();
+      if (gName.includes('smith')) growerId = 'grower-Jane-Smith';
+      else if (gName.includes('davis')) growerId = 'grower-Robert-Davis';
+      else if (gName.includes('wilson')) growerId = 'grower-Emily-Wilson';
+      else if (gName.includes('brown')) growerId = 'grower-Michael-Brown';
+      else if (gName.includes('garcia')) growerId = 'grower-Linda-Garcia';
+      else if (gName.includes('martinez')) growerId = 'grower-William-Martinez';
+    }
+
+    const edgeId = `op-${id}`;
+    const routeId = `rt-${id}`;
+    const plantId = 'plant-1'; // Default regional plant
+    const distanceKm = 45.0; // Default distance
+
     const insertQuery = `
-      INSERT INTO \`jamie-bq-test.agriflow.grower_submissions\` (
-        id, fieldName, variety, country, vendorName, growerName, cropSeason, fieldLocation, region, vendorContact,
+      INSERT INTO \`jamie-bq-test.agriflow.fields\` (
+        id, fieldName, variety, cropSeason, fieldLocation,
         cipcApplied, activeIngredientRate, irrigationType, nApplied, nTotal, pTotal, kTotal, vrtUsed,
         fertilizerType, fertilizerNature, nitrogenAnalysis, ammoniaPercentage, nitricPercentage, ureaPercentage,
         phosphateAnalysis, potassiumAnalysis, applicationRate, applicationMethod, emissionsInhibitors, applicationDate,
-        agronomistName, moisturePercentage, defectRate, yieldTons, submissionStatus, submissionTimestamp,
+        moisturePercentage, defectRate, yieldTons, submissionStatus, submissionTimestamp,
         cropType, equipmentModel, totalFuelGal, fuelRateGalAc, productivityAcHr, areaSeededAc, appliedRateSeedsAc, targetRateSeedsAc,
-        cropStage
+        cropStage, chemicalProduct, chemicalType, chemicalProducer, chemicalActiveIngredient, liquidChemicalRate, dryChemicalRate,
+        manufacturedIn, cftManualNitrogen, cftManualPhosphate, cftManualPotassium, seedTreatments, treatedStorageDiseases,
+        treatedRhizoctonia, otherStorageMethod, irrigation_m3
       ) VALUES (
-        @id, @fieldName, @variety, @country, @vendorName, @growerName, @cropSeason, @fieldLocation, @region, @vendorContact,
+        @id, @fieldName, @variety, @cropSeason, @fieldLocation,
         @cipcApplied, @activeIngredientRate, @irrigationType, @nApplied, @nTotal, @pTotal, @kTotal, @vrtUsed,
         @fertilizerType, @fertilizerNature, @nitrogenAnalysis, @ammoniaPercentage, @nitricPercentage, @ureaPercentage,
         @phosphateAnalysis, @potassiumAnalysis, @applicationRate, @applicationMethod, @emissionsInhibitors, @applicationDate,
-        @agronomistName, @moisturePercentage, @defectRate, @yieldTons, @submissionStatus, CURRENT_TIMESTAMP(),
+        @moisturePercentage, @defectRate, @yieldTons, @submissionStatus, CURRENT_TIMESTAMP(),
         @cropType, @equipmentModel, @totalFuelGal, @fuelRateGalAc, @productivityAcHr, @areaSeededAc, @appliedRateSeedsAc, @targetRateSeedsAc,
-        @cropStage
-      )
+        @cropStage, @chemicalProduct, @chemicalType, @chemicalProducer, @chemicalActiveIngredient, @liquidChemicalRate, @dryChemicalRate,
+        @manufacturedIn, @cftManualNitrogen, @cftManualPhosphate, @cftManualPotassium, @seedTreatments, @treatedStorageDiseases,
+        @treatedRhizoctonia, @otherStorageMethod, @irrigation_m3
+      );
+
+      INSERT INTO \`jamie-bq-test.agriflow.operates_edge\` (id, grower_id, field_id)
+      VALUES (@edgeId, @growerId, @id);
+
+      INSERT INTO \`jamie-bq-test.agriflow.routes_edge\` (id, field_id, plant_id, distance_km)
+      VALUES (@routeId, @id, @plantId, @distanceKm);
     `;
     
     const safeFloat = (val) => {
@@ -115,15 +142,15 @@ async function saveRecord(record) {
     // Parameter definitions mapping (protects against SQL Injection)
     const params = {
       id: id,
+      edgeId: edgeId,
+      growerId: growerId,
+      routeId: routeId,
+      plantId: plantId,
+      distanceKm: distanceKm,
       fieldName: record.fieldName || null,
       variety: record.variety || null,
-      country: record.country || null,
-      vendorName: record.vendorName || null,
-      growerName: record.growerName || null,
       cropSeason: record.cropSeason || null,
       fieldLocation: record.fieldLocation || null,
-      region: record.region || null,
-      vendorContact: record.vendorContact || null,
       cipcApplied: record.cipcApplied || null,
       activeIngredientRate: safeFloat(record.activeIngredientRate),
       irrigationType: record.irrigationType || null,
@@ -144,7 +171,6 @@ async function saveRecord(record) {
       applicationMethod: record.applicationMethod || null,
       emissionsInhibitors: record.emissionsInhibitors || null,
       applicationDate: record.applicationDate || null,
-      agronomistName: record.agronomistName || null,
       moisturePercentage: safeFloat(record.moisturePercentage),
       defectRate: safeFloat(record.defectRate),
       yieldTons: safeFloat(record.yieldTons),
@@ -157,7 +183,22 @@ async function saveRecord(record) {
       areaSeededAc: safeFloat(record.areaSeededAc),
       appliedRateSeedsAc: record.appliedRateSeedsAc ? parseInt(record.appliedRateSeedsAc) : null,
       targetRateSeedsAc: record.targetRateSeedsAc ? parseInt(record.targetRateSeedsAc) : null,
-      cropStage: record.cropStage || 'Harvest'
+      cropStage: record.cropStage || 'Harvest',
+      chemicalProduct: record.chemicalProduct || null,
+      chemicalType: record.chemicalType || null,
+      chemicalProducer: record.chemicalProducer || null,
+      chemicalActiveIngredient: record.chemicalActiveIngredient || null,
+      liquidChemicalRate: safeFloat(record.liquidChemicalRate),
+      dryChemicalRate: safeFloat(record.dryChemicalRate),
+      manufacturedIn: record.manufacturedIn || null,
+      cftManualNitrogen: safeFloat(record.cftManualNitrogen),
+      cftManualPhosphate: safeFloat(record.cftManualPhosphate),
+      cftManualPotassium: safeFloat(record.cftManualPotassium),
+      seedTreatments: record.seedTreatments || null,
+      treatedStorageDiseases: record.treatedStorageDiseases || null,
+      treatedRhizoctonia: record.treatedRhizoctonia || null,
+      otherStorageMethod: record.otherStorageMethod || null,
+      irrigation_m3: safeFloat(record.irrigation_m3)
     };
     
     await bigquery.query({
@@ -165,7 +206,7 @@ async function saveRecord(record) {
       params: params
     });
     
-    console.log(`Saved record ${id} to BigQuery.`);
+    console.log(`Saved record ${id} to BigQuery fields and edge tables.`);
     return true;
   } catch (error) {
     console.error("Error inserting record into BigQuery:", error);

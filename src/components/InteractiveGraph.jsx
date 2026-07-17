@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, Award, Truck, Sprout, User, AlertTriangle, CheckCircle, Flame, Droplet, TrendingUp, RefreshCw } from 'lucide-react';
+import { Loader2, Award, Truck, Sprout, User, AlertTriangle, CheckCircle, Flame, Droplet, TrendingUp, RefreshCw, Sparkles } from 'lucide-react';
 
 export default function InteractiveGraph({ selectedRegion, fields = [] }) {
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -9,10 +9,94 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
   const [hoveredNode, setHoveredNode] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [draggedNode, setDraggedNode] = useState(null);
+  
+  // Crop Timeline states
+  const [timelineData, setTimelineData] = useState([]);
+  const [isTimelineLoading, setIsTimelineLoading] = useState(false);
+
+  // Holistic Health Scorecard states
+  const [holisticHealth, setHolisticHealth] = useState(null);
+  const [isHealthLoading, setIsHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState(null);
+
+  // Sustainability Ledger states
+  const [sustainabilityData, setSustainabilityData] = useState(null);
+  const [isSustainabilityLoading, setIsSustainabilityLoading] = useState(false);
+
+  // Lineage Trace states
+  const [lineageData, setLineageData] = useState(null);
+  const [lineageWarnings, setLineageWarnings] = useState([]);
+  const [isLineageLoading, setIsLineageLoading] = useState(false);
 
   // Drilldown states
   const [drilldownDim, setDrilldownDim] = useState('region'); // 'region', 'agronomist', 'variety'
   const [selectedDimVal, setSelectedDimVal] = useState('All');
+
+  // Fetch holistic health score
+  const fetchHolisticHealth = (fieldName, ndvi, soilMoisture) => {
+    setIsHealthLoading(true);
+    setHealthError(null);
+    fetch(`/api/analytics/holistic-health?fieldName=${encodeURIComponent(fieldName)}&ndvi=${ndvi}&soilMoisture=${soilMoisture}`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to fetch holistic health');
+        }
+        return res.json();
+      })
+      .then(data => {
+        setHolisticHealth(data);
+        setIsHealthLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setHealthError(err.message || 'Error loading scorecard');
+        setIsHealthLoading(false);
+      });
+  };
+
+  // Fetch sustainability metrics
+  const fetchSustainability = (fieldName) => {
+    setIsSustainabilityLoading(true);
+    fetch(`/api/analytics/sustainability?fieldName=${encodeURIComponent(fieldName)}`)
+      .then(res => res.json())
+      .then(data => {
+        setSustainabilityData(data);
+        setIsSustainabilityLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setSustainabilityData(null);
+        setIsSustainabilityLoading(false);
+      });
+  };
+
+  // Fetch timeline data and holistic health scorecard when field node is focused
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      if (selectedNode && selectedNode.type === 'field') {
+        setIsTimelineLoading(true);
+        fetch(`/api/analytics/timeline?fieldName=${selectedNode.label}`)
+          .then(res => res.json())
+          .then(data => {
+            setTimelineData(data.timeline || []);
+            setIsTimelineLoading(false);
+          })
+          .catch(err => {
+            console.error(err);
+            setTimelineData([]);
+            setIsTimelineLoading(false);
+          });
+
+        fetchHolisticHealth(selectedNode.label, selectedNode.ndvi, selectedNode.soilMoisture);
+        fetchSustainability(selectedNode.label);
+      } else {
+        setTimelineData([]);
+        setHolisticHealth(null);
+        setSustainabilityData(null);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode?.id]);
 
   // Simulation alpha cooling ref
   const alphaRef = useRef(1.0);
@@ -25,9 +109,10 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
   // 1. Compile Graph Vertices and Edges based on BigQuery records
   useEffect(() => {
     if (!fields || fields.length === 0) return;
-    setIsLoading(true);
+    Promise.resolve().then(() => {
+      setIsLoading(true);
 
-    let activeRecords = [...fields];
+      let activeRecords = [...fields];
     if (selectedDimVal !== 'All') {
       if (drilldownDim === 'region') {
         activeRecords = fields.filter(f => f.region === selectedDimVal);
@@ -80,9 +165,19 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
 
       // C. Grower Node (Crimson / Flagged Red)
       if (!nodesMap.has(growerId)) {
-        const yieldVal = parseFloat(r.yieldTons) || 0;
-        const moisture = parseFloat(r.soilMoisture) || 0;
-        const isAnomaly = yieldVal < 26.0 || moisture > 32.0;
+        const growerRecords = activeRecords.filter(rec => rec.growerName === r.growerName);
+        const hasFlagged = growerRecords.some(rec => rec.submissionStatus === 'Flagged');
+        const hasPending = growerRecords.some(rec => rec.submissionStatus === 'Pending');
+        
+        let growerColor = '#b90027'; // Brand Crimson (Default Approved)
+        let growerStatus = 'Approved';
+        if (hasFlagged) {
+          growerColor = '#ef4444'; // Neon Red
+          growerStatus = 'Flagged';
+        } else if (hasPending) {
+          growerColor = '#f59e0b'; // Amber
+          growerStatus = 'Pending';
+        }
 
         nodesMap.set(growerId, {
           id: growerId,
@@ -90,14 +185,28 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
           type: 'grower',
           vendor: r.growerName,
           region: region,
-          status: isAnomaly ? 'flagged' : 'compliant',
+          status: growerStatus,
           size: 18,
-          color: isAnomaly ? '#ba1a1a' : '#b90027' // Brand Crimson
+          color: growerColor
         });
       }
 
-      // D. Field Node (Neon Green)
+      // D. Field Node (Dynamic Compliance Lights)
       if (!nodesMap.has(fieldId)) {
+        const fieldRecords = activeRecords.filter(rec => rec.fieldName === r.fieldName);
+        const hasFlagged = fieldRecords.some(rec => rec.submissionStatus === 'Flagged');
+        const hasPending = fieldRecords.some(rec => rec.submissionStatus === 'Pending');
+        
+        let nodeColor = '#10b981'; // Green (Approved)
+        let complianceStatus = 'Approved';
+        if (hasFlagged) {
+          nodeColor = '#ef4444'; // Red
+          complianceStatus = 'Flagged';
+        } else if (hasPending) {
+          nodeColor = '#f59e0b'; // Amber
+          complianceStatus = 'Pending';
+        }
+
         nodesMap.set(fieldId, {
           id: fieldId,
           label: r.fieldName,
@@ -108,7 +217,8 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
           soilMoisture: parseFloat(r.soilMoisture) || 0,
           region: region,
           size: 14,
-          color: '#10b981' // Emerald
+          color: nodeColor,
+          status: complianceStatus
         });
       }
 
@@ -143,15 +253,19 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
       targetRef: nodes.find(n => n.id === l.target)
     })).filter(l => l.sourceRef && l.targetRef);
 
-    setGraphData({ nodes, links: resolvedLinks });
-    setIsLoading(false);
+      setGraphData({ nodes, links: resolvedLinks });
+      setIsLoading(false);
 
-    // Reset alpha cooling simulation to fully active
-    alphaRef.current = 1.0;
+      // Reset alpha cooling simulation to fully active
+      alphaRef.current = 1.0;
+    });
   }, [fields, selectedRegion, drilldownDim, selectedDimVal]);
 
   // 2. Derive Display Subset (Hides unrelated nodes when a node is clicked)
   const getDisplayData = () => {
+    if (lineageData) {
+      return graphData;
+    }
     if (!selectedNode) {
       return graphData;
     }
@@ -299,6 +413,7 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
 
     requestRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(requestRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphData.nodes.length, draggedNode?.id, selectedNode?.id]);
 
   // Mouse drag triggers
@@ -331,7 +446,39 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
 
   const selectNodeAction = (node) => {
     setSelectedNode(node);
+    setLineageData(null);
+    setLineageWarnings([]);
     alphaRef.current = 1.0;
+  };
+
+  const handleTraceLineage = (node) => {
+    if (!node) return;
+    setIsLineageLoading(true);
+    fetch(`/api/analytics/lineage?nodeId=${node.id}`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to fetch lineage data');
+        }
+        return res.json();
+      })
+      .then(data => {
+        const nodeIds = new Set(data.nodes.map(n => n.id));
+        const linkKeys = new Set(data.links.map(l => `${l.source}->${l.target}`));
+        setLineageData({ nodeIds, linkKeys });
+        setLineageWarnings(data.warnings || []);
+        setIsLineageLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLineageData(null);
+        setLineageWarnings([]);
+        setIsLineageLoading(false);
+      });
+  };
+
+  const handleResetLineage = () => {
+    setLineageData(null);
+    setLineageWarnings([]);
   };
 
   // Compile drilldown filter options
@@ -479,11 +626,31 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
 
             {/* A. Render link lines (Highlight direct connections, fade others out to 4% opacity) */}
             {displayLinks.map((link, idx) => {
+              const isLineageLink = lineageData && (lineageData.linkKeys.has(`${link.sourceRef.id}->${link.targetRef.id}`) || lineageData.linkKeys.has(`${link.targetRef.id}->${link.sourceRef.id}`));
               const isDirectLink = selectedNode && (selectedNode.id === link.sourceRef.id || selectedNode.id === link.targetRef.id);
               
               let opacity = 0.40; // Default link opacity
-              if (selectedNode) {
+              let strokeColor = link.label === 'AUDITS' ? 'rgba(249, 115, 22, 0.3)' : 'rgba(255, 255, 255, 0.12)';
+              let strokeWidth = 1.2;
+              let strokeDasharray = 'none';
+
+              if (lineageData) {
+                if (isLineageLink) {
+                  opacity = 0.95;
+                  strokeColor = '#00b4d8';
+                  strokeWidth = 2.2;
+                  strokeDasharray = '4,3';
+                } else {
+                  opacity = 0.04;
+                  strokeColor = 'rgba(255, 255, 255, 0.04)';
+                }
+              } else if (selectedNode) {
                 opacity = isDirectLink ? 0.90 : 0.04;
+                if (isDirectLink) {
+                  strokeColor = '#00b4d8';
+                  strokeWidth = 2.2;
+                  strokeDasharray = '4,3';
+                }
               }
 
               return (
@@ -493,9 +660,9 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
                   y1={link.sourceRef.y}
                   x2={link.targetRef.x}
                   y2={link.targetRef.y}
-                  stroke={isDirectLink ? '#00b4d8' : link.label === 'AUDITS' ? 'rgba(249, 115, 22, 0.3)' : 'rgba(255, 255, 255, 0.12)'}
-                  strokeWidth={isDirectLink ? 2.2 : 1.2}
-                  strokeDasharray={isDirectLink ? '4,3' : 'none'}
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={strokeDasharray}
                   opacity={opacity}
                 />
               );
@@ -503,10 +670,13 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
 
             {/* B. Render link label tags on edge lines */}
             {displayLinks.map((link, idx) => {
+              const isLineageLink = lineageData && (lineageData.linkKeys.has(`${link.sourceRef.id}->${link.targetRef.id}`) || lineageData.linkKeys.has(`${link.targetRef.id}->${link.sourceRef.id}`));
               const isDirectLink = selectedNode && (selectedNode.id === link.sourceRef.id || selectedNode.id === link.targetRef.id);
               
               let opacity = 0.35;
-              if (selectedNode) {
+              if (lineageData) {
+                opacity = isLineageLink ? 0.85 : 0.02;
+              } else if (selectedNode) {
                 opacity = isDirectLink ? 0.85 : 0.02;
               }
 
@@ -542,10 +712,13 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
             {/* C. Render Node Vertices (Bravoverse style: Pitch black fill, colored stroke glow, Lucide vector icons) */}
             {displayNodes.map(node => {
               const isSelected = selectedNode && selectedNode.id === node.id;
+              const isLineageNode = lineageData && lineageData.nodeIds.has(node.id);
               
               // Fade out unselected nodes when a focus node is active (Bravoverse 15% opacity rule)
               let opacity = 1.0;
-              if (selectedNode && !isSelected) {
+              if (lineageData) {
+                opacity = isLineageNode ? 1.0 : 0.15;
+              } else if (selectedNode && !isSelected) {
                 // If it's a neighbor, keep it visible, otherwise dim it down to 15%
                 const isNeighbor = displayLinks.some(l => 
                   (l.sourceRef.id === selectedNode.id && l.targetRef.id === node.id) ||
@@ -644,9 +817,8 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
             })}
           </svg>
 
-          {/* Floating Hover Details Tooltip */}
           {hoveredNode && (
-            <div style={{
+            <div className="tooltip" style={{
               position: 'absolute',
               top: '12px',
               left: '12px',
@@ -668,12 +840,13 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
               {hoveredNode.type === 'grower' && (
                 <>
                   <strong>Region:</strong> {hoveredNode.region}<br/>
-                  <strong>Compliance:</strong> <span style={{ color: hoveredNode.status === 'flagged' ? '#ba1a1a' : '#10b981', fontWeight: 'bold' }}>{hoveredNode.status.toUpperCase()}</span>
+                  <strong>Compliance:</strong> <span style={{ color: hoveredNode.status === 'Flagged' ? '#ef4444' : (hoveredNode.status === 'Pending' ? '#f59e0b' : '#10b981'), fontWeight: 'bold' }}>{hoveredNode.status.toUpperCase()}</span>
                 </>
               )}
               {hoveredNode.type === 'field' && (
                 <>
                   <strong>Variety:</strong> {hoveredNode.variety}<br/>
+                  <strong>Status:</strong> <span style={{ color: hoveredNode.status === 'Flagged' ? '#ef4444' : (hoveredNode.status === 'Pending' ? '#f59e0b' : '#10b981'), fontWeight: 'bold' }}>{hoveredNode.status.toUpperCase()}</span><br/>
                   <strong>Yield:</strong> {hoveredNode.yieldTons} Tons<br/>
                   <strong>NDVI:</strong> {hoveredNode.ndvi}<br/>
                   <strong>Moisture:</strong> {hoveredNode.soilMoisture}%
@@ -757,6 +930,127 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
             <h3 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text-primary)', margin: '4px 0 2px 0' }}>
               {selectedNode.label}
             </h3>
+
+            {/* Lineage Trace Actions & Warnings */}
+            <div style={{ display: 'flex', gap: '6px', margin: '4px 0 8px 0' }}>
+              <button
+                onClick={() => handleTraceLineage(selectedNode)}
+                disabled={isLineageLoading}
+                style={{
+                  flex: 1,
+                  backgroundColor: 'rgba(0, 180, 216, 0.15)',
+                  border: '1.5px solid rgba(0, 180, 216, 0.4)',
+                  color: '#00b4d8',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}
+              >
+                {isLineageLoading ? (
+                  <>
+                    <Loader2 className="animate-spin" size={10} /> Tracing...
+                  </>
+                ) : (
+                  'Trace Downstream Lineage'
+                )}
+              </button>
+
+              {lineageData && (
+                <button
+                  onClick={handleResetLineage}
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    border: '1.5px solid rgba(239, 68, 68, 0.4)',
+                    color: '#ef4444',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    fontSize: '0.68rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+
+            {lineageData && lineageWarnings.length === 0 && (
+              <div style={{
+                margin: '4px 0 8px 0',
+                border: '1.5px solid rgba(16, 185, 129, 0.25)',
+                borderRadius: '8px',
+                padding: '6px 8px',
+                backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                fontSize: '0.62rem',
+                color: '#10b981',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                textTransform: 'uppercase'
+              }}>
+                <CheckCircle size={12} /> No neighboring compliance warnings
+              </div>
+            )}
+
+            {lineageWarnings.length > 0 && (
+              <div style={{
+                margin: '4px 0 8px 0',
+                border: '1.5px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '8px',
+                padding: '8px',
+                backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <span style={{
+                  fontSize: '0.62rem',
+                  color: '#ef4444',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  textTransform: 'uppercase'
+                }}>
+                  <AlertTriangle size={12} /> Neighbor Compliance Warnings ({lineageWarnings.length})
+                </span>
+                <table style={{ width: '100%', fontSize: '0.58rem', color: 'var(--text-secondary)', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'left' }}>
+                      <th style={{ paddingBottom: '4px', fontWeight: 'bold' }}>Grower</th>
+                      <th style={{ paddingBottom: '4px', fontWeight: 'bold' }}>Field</th>
+                      <th style={{ paddingBottom: '4px', fontWeight: 'bold', textAlign: 'right' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineageWarnings.map((w, idx) => (
+                      <tr key={idx} style={{ borderBottom: idx < lineageWarnings.length - 1 ? '1px solid rgba(255, 255, 255, 0.05)' : 'none' }}>
+                        <td style={{ padding: '4px 0', fontWeight: 'bold', color: 'var(--text-primary)' }}>{w.growerName}</td>
+                        <td style={{ padding: '4px 0' }}>{w.fieldName}</td>
+                        <td style={{ padding: '4px 0', textAlign: 'right', color: w.status === 'Flagged' ? '#ef4444' : '#f59e0b', fontWeight: 'bold' }}>{w.status.toUpperCase()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             
             <div style={{ borderTop: '1px solid var(--border-card)', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.72rem' }}>
               {selectedNode.type === 'field' && (
@@ -769,10 +1063,257 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
                     <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.62rem' }}>Final Yield Ingested</span>
                     <strong style={{ color: '#10b981', fontSize: '0.85rem' }}>{selectedNode.yieldTons} Tons</strong>
                   </div>
-                  <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-card)', marginTop: '4px' }}>
-                    <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', fontWeight: 'bold', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Earth Engine Analytics</span>
-                    <strong>Sentinel-2 NDVI:</strong> {selectedNode.ndvi}<br/>
-                    <strong>SMAP Soil Moisture:</strong> {selectedNode.soilMoisture}%
+                  {/* Precision Sustainability Ledger */}
+                  {sustainabilityData && (
+                    <div style={{ borderTop: '1px solid var(--border-card)', paddingTop: '8px', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.62rem', color: 'var(--frito-gold)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Precision Sustainability Ledger
+                      </span>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.65rem' }}>
+                        <div>
+                          <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.55rem' }}>Water-Use Efficiency</span>
+                          <strong>{sustainabilityData.waterUseEfficiency !== null ? `${sustainabilityData.waterUseEfficiency} Tons/m³` : 'N/A'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.55rem' }}>Transit Carbon Footprint</span>
+                          <strong>{sustainabilityData.carbonFootprint !== null ? `${sustainabilityData.carbonFootprint} kg CO₂` : 'N/A'}</strong>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.65rem', marginTop: '2px' }}>
+                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.55rem' }}>Runoff Risk Warning:</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          color: sustainabilityData.soilRunoffRisk === 'High' ? '#ef4444' : (sustainabilityData.soilRunoffRisk === 'Medium' ? '#f59e0b' : '#10b981')
+                        }}>
+                          {sustainabilityData.soilRunoffRisk}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {/* Holistic Health Scorecard Section */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', borderTop: '1px solid var(--border-card)', paddingTop: '10px' }}>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--frito-gold)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Holistic Health & Advisor
+                    </span>
+                    <button
+                      onClick={() => fetchHolisticHealth(selectedNode.label, selectedNode.ndvi, selectedNode.soilMoisture)}
+                      disabled={isHealthLoading}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-secondary)',
+                        cursor: isHealthLoading ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '0.58rem',
+                        fontWeight: 'bold',
+                        textTransform: 'uppercase'
+                      }}
+                    >
+                      <RefreshCw size={10} className={isHealthLoading ? 'animate-spin' : ''} />
+                      Refresh
+                    </button>
+                  </div>
+
+                  {isHealthLoading ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', gap: '8px', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                      <Loader2 className="animate-spin" size={14} color="var(--frito-gold)" />
+                      <span>Analyzing Holistic Health...</span>
+                    </div>
+                  ) : healthError ? (
+                    <div style={{ color: '#ef4444', fontSize: '0.65rem', padding: '4px' }}>
+                      Error loading health metrics: {healthError}
+                    </div>
+                  ) : holisticHealth ? (
+                    <>
+                      {/* Stylized Grade Badge & Label Row */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+                        <div style={(() => {
+                          let color = '#ef4444';
+                          let bgColor = 'rgba(239, 68, 68, 0.15)';
+                          let borderColor = '#ef4444';
+                          
+                          if (holisticHealth.score === 'A') {
+                            color = '#10b981';
+                            bgColor = 'rgba(16, 185, 129, 0.15)';
+                            borderColor = '#10b981';
+                          } else if (holisticHealth.score === 'B') {
+                            color = '#10b981';
+                            bgColor = 'rgba(16, 185, 129, 0.1)';
+                            borderColor = 'rgba(16, 185, 129, 0.7)';
+                          } else if (holisticHealth.score === 'C') {
+                            color = '#f59e0b';
+                            bgColor = 'rgba(245, 158, 11, 0.15)';
+                            borderColor = '#f59e0b';
+                          } else if (holisticHealth.score === 'D') {
+                            color = '#f97316';
+                            bgColor = 'rgba(249, 115, 22, 0.15)';
+                            borderColor = '#f97316';
+                          }
+                          
+                          return {
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '8px',
+                            border: `2px solid ${borderColor}`,
+                            backgroundColor: bgColor,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.25rem',
+                            fontWeight: '900',
+                            color: color,
+                            boxShadow: `0 0 10px ${borderColor}20`
+                          };
+                        })()}>
+                          {holisticHealth.score}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 'bold' }}>Holistic Health Grade</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: '#ffffff' }}>
+                            {holisticHealth.score === 'A' ? 'Optimal Performance' : holisticHealth.score === 'B' ? 'Good Performance' : holisticHealth.score === 'C' ? 'Mild Stress Warning' : 'Critical Action Required'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Checklist of Components */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px', backgroundColor: 'var(--bg-secondary)', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-card)' }}>
+                        <span style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '2px' }}>
+                          Metric Compliance Checklist
+                        </span>
+                        
+                        {/* NDVI */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.65rem' }}>
+                          {selectedNode.ndvi >= 0.60 ? (
+                            <CheckCircle size={12} color="#10b981" />
+                          ) : (
+                            <AlertTriangle size={12} color="#f59e0b" />
+                          )}
+                          <span style={{ color: selectedNode.ndvi >= 0.60 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                            Vegetation Index (NDVI: {selectedNode.ndvi})
+                          </span>
+                        </div>
+
+                        {/* Soil Moisture */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.65rem' }}>
+                          {selectedNode.soilMoisture >= 15 ? (
+                            <CheckCircle size={12} color="#10b981" />
+                          ) : (
+                            <AlertTriangle size={12} color="#f59e0b" />
+                          )}
+                          <span style={{ color: selectedNode.soilMoisture >= 15 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                            Soil Moisture ({selectedNode.soilMoisture}%)
+                          </span>
+                        </div>
+
+                        {/* Audit Status */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.65rem' }}>
+                          {selectedNode.status !== 'Flagged' ? (
+                            <CheckCircle size={12} color="#10b981" />
+                          ) : (
+                            <AlertTriangle size={12} color="#ef4444" />
+                          )}
+                          <span style={{ color: selectedNode.status !== 'Flagged' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                            Audit Status ({selectedNode.status.toUpperCase()})
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Gold-Bordered Advisor Card */}
+                      <div style={{
+                        marginTop: '10px',
+                        border: '1.5px solid var(--frito-gold)',
+                        borderRadius: '8px',
+                        padding: '10px',
+                        backgroundColor: 'rgba(255, 208, 0, 0.03)',
+                        boxShadow: '0 4px 12px rgba(255, 208, 0, 0.05)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Sparkles size={12} color="var(--frito-gold)" />
+                          <span style={{ fontSize: '0.62rem', color: 'var(--frito-gold)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Gemini Agronomic Advisory
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.68rem', color: 'var(--text-primary)', lineHeight: '1.4' }}>
+                          {holisticHealth.advisory}
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {/* BigQuery Property Graph Dynamic Timeline */}
+                  <div style={{ marginTop: '12px', borderTop: '1px solid var(--border-card)', paddingTop: '10px' }}>
+                    <span style={{ 
+                      fontSize: '0.62rem', 
+                      color: 'var(--frito-gold)', 
+                      fontWeight: 'bold', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '4px',
+                      marginBottom: '8px',
+                      textTransform: 'uppercase' 
+                    }}>
+                      <Sparkles size={9} /> BQ Graph Crop Timeline
+                    </span>
+                    
+                    {isTimelineLoading ? (
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', padding: '4px' }}>Loading timeline...</div>
+                    ) : timelineData.length === 0 ? (
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', padding: '4px' }}>No timeline data found for this plot.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative', paddingLeft: '10px', borderLeft: '1.5px dashed rgba(255, 208, 0, 0.2)' }}>
+                        {timelineData.map((event, idx) => (
+                          <div key={event.logId} style={{ position: 'relative', fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
+                            {/* Dot indicator */}
+                            <div style={{ 
+                              position: 'absolute', 
+                              left: '-14px', 
+                              top: '3px', 
+                              width: '7px', 
+                              height: '7px', 
+                              borderRadius: '50%', 
+                              backgroundColor: event.status === 'Flagged' ? '#ef4444' : (event.status === 'Pending' ? '#f59e0b' : '#10b981'),
+                              border: '1.5px solid var(--bg-card)'
+                            }} />
+                            
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '1px' }}>
+                              <span>{event.stage}</span>
+                              <span style={{ 
+                                fontSize: '0.55rem', 
+                                color: event.status === 'Flagged' ? '#ef4444' : (event.status === 'Pending' ? '#f59e0b' : '#10b981')
+                              }}>{event.status.toUpperCase()}</span>
+                            </div>
+                            
+                            {event.stage === 'Seeding' && (
+                              <p style={{ margin: 0, fontSize: '0.58rem', lineHeight: 1.2 }}>
+                                Variety: <strong>{event.variety}</strong><br />
+                                Treatment: <strong>{event.seedTreatments || 'None'}</strong>
+                              </p>
+                            )}
+                            {event.stage === 'Application' && (
+                              <p style={{ margin: 0, fontSize: '0.58rem', lineHeight: 1.2 }}>
+                                Fertilizer: <strong>{event.fertilizer || 'None'}</strong><br />
+                                Pesticide: <strong>{event.pesticide || 'None'}</strong>
+                              </p>
+                            )}
+                            {event.stage === 'Harvest' && (
+                              <p style={{ margin: 0, fontSize: '0.58rem', lineHeight: 1.2 }}>
+                                Yield: <strong>{event.yield} Tons</strong> | Moisture: <strong>{event.moisture}%</strong><br />
+                                Defects: <strong>{event.defectRate}%</strong>
+                              </p>
+                            )}
+                            
+                            <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)', display: 'block', marginTop: '1px' }}>
+                              {new Date(event.timestamp.value || event.timestamp).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'})}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -788,8 +1329,11 @@ export default function InteractiveGraph({ selectedRegion, fields = [] }) {
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '0.62rem' }}>Auditor Verification Status</span>
-                    <strong style={{ color: selectedNode.status === 'flagged' ? '#ff897a' : '#10b981', fontSize: '0.85rem' }}>
-                      {selectedNode.status === 'flagged' ? '⚠️ AUDIT INGESTION FAILURE' : '✓ VALID SUPPLIER'}
+                    <strong style={{ 
+                      color: selectedNode.status === 'Flagged' ? '#ef4444' : (selectedNode.status === 'Pending' ? '#f59e0b' : '#10b981'), 
+                      fontSize: '0.78rem' 
+                    }}>
+                      {selectedNode.status === 'Flagged' ? '⚠️ AUDIT INGESTION FAILURE' : (selectedNode.status === 'Pending' ? '⚠ PENDING COMPLIANCE REVIEW' : '✓ VALID APPROVED SUPPLIER')}
                     </strong>
                   </div>
                 </>

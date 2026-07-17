@@ -39,3 +39,30 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# E2E Test logs and output logs
+*.log
+/setup_output.log
+/setup_run.log
+/migration.log
+/migration2.log
+/e2e.log
+/e2e_run.log
+/next_e2e.log
+/next_server.log
+/next_server_run.log
+/production_server.log
+/run.log
+/sustainability.log
+/test_output.log
+/test_output2.log
+/test_run.log
+/test_runner.log
+/manual_next.log
+
+# Agent workspace metadata and state files
+/.agents/
+/progress.md
+/BRIEFING.md
+/ORIGINAL_REQUEST.md
+setup_bigquery.lock

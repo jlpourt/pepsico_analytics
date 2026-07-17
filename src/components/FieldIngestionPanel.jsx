@@ -23,7 +23,8 @@ export default function FieldIngestionPanel({ onSubmissionSuccess }) {
   const polygonLayerRef = useRef(null);
 
   // Clean up states when tab swaps
-  useEffect(() => {
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
     setFile(null);
     setImagePreview('');
     setExtractedData(null);
@@ -35,7 +36,7 @@ export default function FieldIngestionPanel({ onSubmissionSuccess }) {
       mapInstanceRef.current = null;
       polygonLayerRef.current = null;
     }
-  }, [activeTab]);
+  };
 
   // Telemetry map drawer for Tab C: Photo Coordinates
   useEffect(() => {
@@ -368,7 +369,7 @@ export default function FieldIngestionPanel({ onSubmissionSuccess }) {
         paddingBottom: '0.25rem'
       }}>
         <button
-          onClick={() => setActiveTab('pdf')}
+          onClick={() => handleTabChange('pdf')}
           style={{
             background: 'none',
             border: 'none',
@@ -384,7 +385,7 @@ export default function FieldIngestionPanel({ onSubmissionSuccess }) {
           PDF Document Parsing
         </button>
         <button
-          onClick={() => setActiveTab('csv')}
+          onClick={() => handleTabChange('csv')}
           style={{
             background: 'none',
             border: 'none',
@@ -400,7 +401,7 @@ export default function FieldIngestionPanel({ onSubmissionSuccess }) {
           Spreadsheet Batch Import
         </button>
         <button
-          onClick={() => setActiveTab('image')}
+          onClick={() => handleTabChange('image')}
           style={{
             background: 'none',
             border: 'none',
@@ -515,6 +516,7 @@ export default function FieldIngestionPanel({ onSubmissionSuccess }) {
             {activeTab === 'image' && imagePreview && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <span style={{ fontSize: '0.62rem', fontWeight: '700', color: 'var(--text-secondary)' }}>Selected Field Slip:</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={imagePreview}
                   alt="grower slip preview"

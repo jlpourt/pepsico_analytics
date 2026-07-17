@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Database, RefreshCw, AlertOctagon, ShieldCheck, Map, BarChart3, HelpCircle, Gauge } from 'lucide-react';
+import { Database, RefreshCw, AlertOctagon, ShieldCheck, Map, BarChart3, HelpCircle, Gauge, Sparkles } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const InteractiveMap = dynamic(() => import('./InteractiveMap'), {
@@ -16,8 +16,8 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
   const [isLoading, setIsLoading] = useState(false);
   const [hoveredField, setHoveredField] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState('NA'); // Default globally filtered to NA region
-  const [selectedLayer, setSelectedLayer] = useState('yield'); // 'yield', 'ndvi', 'moisture', 'temp'
-  const [viewMode, setViewMode] = useState('map'); // 'map' or 'graph'
+  const [selectedLayer, setSelectedLayer] = useState('status'); // 'status', 'yield', 'ndvi', 'moisture', 'temp'
+  const [viewMode, setViewMode] = useState('graph'); // 'graph' or 'map'
   const [selectedFieldId, setSelectedFieldId] = useState(null);
   const [selectedVariety, setSelectedVariety] = useState(null);
   const [selectedTargetCrop, setSelectedTargetCrop] = useState('Potatoes'); // 'Potatoes', 'Soybeans', 'Corn'
@@ -26,6 +26,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
   const [selectedStage, setSelectedStage] = useState('All'); // 'All', 'Seeding', 'Application', 'Harvest'
 
   const fetchRecords = async () => {
+    await Promise.resolve();
     setIsLoading(true);
     try {
       const response = await fetch('/api/data');
@@ -41,7 +42,9 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
   };
 
   useEffect(() => {
-    fetchRecords();
+    Promise.resolve().then(() => {
+      fetchRecords();
+    });
   }, [refreshTrigger]);
 
   // Global filters
@@ -135,7 +138,8 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
         surfaceTemp: r.surfaceTemp,
         slope: r.slope,
         moisturePercentage: r.moisturePercentage,
-        variety: r.variety
+        variety: r.variety,
+        submissionStatus: r.submissionStatus
       };
     });
 
@@ -314,10 +318,10 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
               {/* Earth Engine & BigQuery Layer Selector Pill Group */}
               <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
                 {[
-                  { id: 'yield', label: 'Crop Yield (BQ)', color: '#dc2626' },
+                  { id: 'status', label: 'Compliance Status (BQ)', color: '#b90027' },
+                  { id: 'yield', label: 'Crop Yield (BQ)', color: '#1f8b82' },
                   { id: 'ndvi', label: 'NDVI Vegetation (EE)', color: '#16a34a' },
-                  { id: 'moisture', label: 'Soil Moisture (EE)', color: '#2563eb' },
-                  { id: 'temp', label: 'Canopy Temp (EE)', color: '#f97316' }
+                  { id: 'moisture', label: 'Soil Moisture (EE)', color: '#2563eb' }
                 ].map(layer => (
                   <button
                     key={layer.id}
@@ -585,7 +589,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
             </div>
           </h5>
           {filteredRecords.length === 0 ? (
-            <div className="empty-chart flex-center h-100">No yield logs available in selected stage. Click 'Harvest Phase' to view moisture charts.</div>
+            <div className="empty-chart flex-center h-100">No yield logs available in selected stage. Click &apos;Harvest Phase&apos; to view moisture charts.</div>
           ) : (
             <div className="svg-chart-container" style={{ marginTop: '0.4rem' }}>
               <svg width="100%" height="150" viewBox="0 0 400 150">
@@ -674,12 +678,46 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
                 
                 // Reason description builder
                 let reasons = [];
-                if (m > 18 || m < 12) reasons.push(`Moisture (${m}%) outside target 12-18%`);
-                if (d > 4.0) reasons.push(`Defects (${d}%) exceeds 4.0% limit`);
-                if (y < 25.0) reasons.push(`Low Yield outlier (${y} Tons)`);
+                let suggestion = "";
+                
+                if (m > 18) {
+                  reasons.push(`Moisture (${m}%) exceeds 18% limit`);
+                  suggestion = "🚨 High moisture increases decay risk. Route batch to Chicago Plant for immediate chip production, or apply continuous ventilation at 14°C.";
+                } else if (m < 12 && m > 0) {
+                  reasons.push(`Moisture (${m}%) below 12% limit`);
+                  suggestion = "🏜️ Dehydrated batch. Monitor fry test coloration for sugar accumulation; adjust peeling duration to prevent bruising.";
+                }
+                
+                if (d > 4.0) {
+                  reasons.push(`Defects (${d}%) exceeds 4.0% limit`);
+                  if (!suggestion) {
+                    suggestion = "⚠️ Defect rate exceeds standard. Flagged for sorting inspection. Recommend a manual optical grader sweep before processing.";
+                  }
+                }
+                
+                if (y < 25.0 && y > 0) {
+                  reasons.push(`Low Yield (${y} Tons)`);
+                  if (!suggestion) {
+                    suggestion = "🌱 Underperforming yield plot detected. Correlate with MODIS soil temperature logs; check center-pivot irrigation coverage.";
+                  }
+                }
+
+                // Check for missing coordinates or location format issues
+                const isMalformedWkt = !r.fieldLocation || !r.fieldLocation.startsWith('POLYGON');
+                if (isMalformedWkt) {
+                  reasons.push("Malformed GPS Boundary (WKT)");
+                  if (!suggestion) {
+                    suggestion = "🌐 GPS boundary polygon parsing failed. Prompt grower to re-export field geometry from tractor console in OGC WKT format.";
+                  }
+                }
+
+                // Default suggestion if none triggered
+                if (!suggestion) {
+                  suggestion = "⚡ Record matches active compliance guidelines. Clear exception queue and commit row to historical warehouse.";
+                }
                 
                 return (
-                  <div key={r.id} className="field-card" style={{ borderLeft: '3px solid var(--status-red)', padding: '0.4rem 0.6rem', marginBottom: '0.35rem' }}>
+                  <div key={r.id} className="field-card" style={{ borderLeft: '3px solid var(--status-red)', padding: '0.45rem 0.65rem', marginBottom: '0.45rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
                       <span className="font-mono text-red font-bold" style={{ fontSize: '0.72rem' }}>{r.id}</span>
                       <span className="text-muted" style={{ fontSize: '0.62rem' }}>{r.growerName}</span>
@@ -691,6 +729,31 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
                           {reason}
                         </span>
                       ))}
+                    </div>
+                    {/* Gemini AI Advisory Tip Box */}
+                    <div style={{ 
+                      marginTop: '6px', 
+                      backgroundColor: 'rgba(255, 208, 0, 0.04)', 
+                      border: '1px solid rgba(255, 208, 0, 0.15)', 
+                      borderRadius: '6px', 
+                      padding: '4px 6px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px'
+                    }}>
+                      <span style={{ 
+                        fontSize: '0.52rem', 
+                        color: 'var(--frito-gold)', 
+                        fontWeight: 'bold', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '2px' 
+                      }}>
+                        <Sparkles size={8} /> Gemini Advisory
+                      </span>
+                      <p style={{ fontSize: '0.58rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.3 }}>
+                        {suggestion}
+                      </p>
                     </div>
                   </div>
                 );
@@ -821,7 +884,7 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
               <h5 className="chart-title">Precision Planting Seeding Deviation (%)</h5>
               {seedingAccuracyData.length === 0 ? (
                 <div className="empty-chart flex-center h-100 text-muted" style={{ fontSize: '0.65rem' }}>
-                  No active seeding telemetry logs in selected stage. Click 'Seeding Phase' to audit precision metrics.
+                  No active seeding telemetry logs in selected stage. Click &apos;Seeding Phase&apos; to audit precision metrics.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px 0', flex: 1, overflowY: 'auto' }}>

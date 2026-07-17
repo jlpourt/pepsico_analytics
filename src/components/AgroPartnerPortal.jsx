@@ -4,6 +4,66 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, XCircle, ArrowRight, Loader2, Sparkles, Plus, Trash2, MapPin, Keyboard, ChevronLeft, Database } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
+const validateRecord = (rec) => {
+  const issues = [];
+  if (!rec) return issues;
+  
+  // 1. Mandatory fields check
+  const required = ['fieldName', 'variety', 'growerName', 'country', 'fieldLocation'];
+  required.forEach(field => {
+    if (!rec[field] || rec[field].toString().trim() === '') {
+      issues.push({ field, severity: 'error', message: `Missing required field: ${field}` });
+    }
+  });
+
+  // 2. GPS Location validation (checks WKT format: POLYGON((lon lat, ...)))
+  if (rec.fieldLocation && rec.fieldLocation.toString().trim() !== '') {
+    const wktRegex = /^POLYGON\s*\(\(\s*(-?\d+(\.\d+)?\s+-?\d+(\.\d+)?\s*,\s*)*-?\d+(\.\d+)?\s+-?\d+(\.\d+)?\s*\)\)$/i;
+    if (!wktRegex.test(rec.fieldLocation.trim())) {
+      issues.push({ field: 'fieldLocation', severity: 'error', message: 'Malformed WKT GPS polygon string' });
+    }
+  }
+
+  // 3. Country format validation
+  if (rec.country && rec.country.toString().trim() !== '') {
+    if (rec.country.trim().length !== 3) {
+      issues.push({ field: 'country', severity: 'error', message: 'Country must be a 3-letter ISO code (e.g. USA, MEX, IND)' });
+    }
+  }
+
+  // 4. Moisture check
+  if (rec.moisturePercentage) {
+    const moist = parseFloat(rec.moisturePercentage);
+    if (isNaN(moist)) {
+      issues.push({ field: 'moisturePercentage', severity: 'error', message: 'Moisture must be a numeric value' });
+    } else if (moist < 12 || moist > 18) {
+      issues.push({ field: 'moisturePercentage', severity: 'warning', message: `Moisture (${moist}%) outside optimal target range (12% - 18%)` });
+    }
+  }
+
+  // 5. Defect check
+  if (rec.defectRate) {
+    const def = parseFloat(rec.defectRate);
+    if (isNaN(def)) {
+      issues.push({ field: 'defectRate', severity: 'error', message: 'Defect rate must be a numeric value' });
+    } else if (def > 4.0) {
+      issues.push({ field: 'defectRate', severity: 'warning', message: `Defect rate (${def}%) exceeds maximum tolerance threshold (4.0%)` });
+    }
+  }
+
+  // 6. Yield check
+  if (rec.yieldTons) {
+    const y = parseFloat(rec.yieldTons);
+    if (isNaN(y)) {
+      issues.push({ field: 'yieldTons', severity: 'error', message: 'Yield must be a numeric value' });
+    } else if (y < 10 || y > 60) {
+      issues.push({ field: 'yieldTons', severity: 'warning', message: `Yield outlier: ${y} Tons (Typical range is 10 - 60 Tons)` });
+    }
+  }
+
+  return issues;
+};
+
 export default function AgroPartnerPortal({ onSubmissionSuccess }) {
   // Mobile app navigation state: 'home', 'pdf', 'csv', 'image', 'maker-checker', 'csv-review'
   const [viewMode, setViewMode] = useState('home');
@@ -20,6 +80,11 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
 
   // Leaflet map container refs
   const mapRef = useRef(null);
+  
+  // Calculate CSV batch errors and warnings dynamically at top-level
+  const batchHasErrors = csvRecords.some(r => validateRecord(r).some(i => i.severity === 'error'));
+  const batchErrors = csvRecords.reduce((acc, r) => acc + validateRecord(r).filter(i => i.severity === 'error').length, 0);
+  const batchWarnings = csvRecords.reduce((acc, r) => acc + validateRecord(r).filter(i => i.severity === 'warning').length, 0);
   const mapInstanceRef = useRef(null);
   const polygonLayerRef = useRef(null);
 
@@ -39,11 +104,7 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
     }
   };
 
-  useEffect(() => {
-    if (extractedData) {
-      setActiveCategory('Foundation Critical');
-    }
-  }, [extractedData]);
+
 
   // Map drawer for Maker-Checker coordinate validation
   useEffect(() => {
@@ -155,6 +216,7 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
       if (!response.ok) throw new Error("Document analysis failed");
       const result = await response.json();
       setExtractedData(result.data);
+      setActiveCategory('Foundation Critical');
       setViewMode('maker-checker');
     } catch(err) {
       alert("Extraction failed: " + err.message);
@@ -243,10 +305,10 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
 
   // Group fields into categories (aligned with Datapoints.pdf groups)
   const categories = {
-    'Foundation Critical': ['fieldName', 'variety', 'country', 'vendorName', 'growerName', 'cropSeason', 'fieldLocation', 'cropStage'],
-    'Foundation Recommended': ['region', 'vendorContact', 'cipcApplied', 'activeIngredientRate', 'irrigationType', 'moisturePercentage', 'defectRate', 'yieldTons'],
-    'Advanced Insights': ['agronomistName', 'nApplied', 'nTotal', 'pTotal', 'kTotal', 'vrtUsed', 'fertilizerType', 'fertilizerNature', 'nitrogenAnalysis', 'phosphateAnalysis', 'potassiumAnalysis', 'applicationRate', 'applicationMethod', 'emissionsInhibitors', 'applicationDate'],
-    'Machinery Telemetry': ['cropType', 'equipmentModel', 'totalFuelGal', 'fuelRateGalAc', 'productivityAcHr', 'areaSeededAc', 'appliedRateSeedsAc', 'targetRateSeedsAc']
+    'Foundation Critical': ['fieldName', 'variety', 'country', 'vendorName', 'growerName', 'cropSeason', 'fieldLocation', 'cropStage', 'bankDetails'],
+    'Foundation Recommended': ['region', 'vendorContact', 'cipcApplied', 'activeIngredientRate', 'irrigationType', 'moisturePercentage', 'defectRate', 'yieldTons', 'manufacturedIn', 'otherStorageMethod'],
+    'Advanced Insights': ['agronomistName', 'nApplied', 'nTotal', 'pTotal', 'kTotal', 'vrtUsed', 'fertilizerType', 'fertilizerNature', 'nitrogenAnalysis', 'phosphateAnalysis', 'potassiumAnalysis', 'applicationRate', 'applicationMethod', 'emissionsInhibitors', 'applicationDate', 'chemicalProduct', 'chemicalType', 'chemicalProducer', 'chemicalActiveIngredient', 'liquidChemicalRate', 'dryChemicalRate', 'cftManualNitrogen', 'cftManualPhosphate', 'cftManualPotassium'],
+    'Machinery Telemetry': ['cropType', 'equipmentModel', 'totalFuelGal', 'fuelRateGalAc', 'productivityAcHr', 'areaSeededAc', 'appliedRateSeedsAc', 'targetRateSeedsAc', 'seedTreatments', 'treatedStorageDiseases', 'treatedRhizoctonia']
   };
 
   const fieldLabels = {
@@ -288,7 +350,22 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
     productivityAcHr: 'Productivity Rate (Ac/Hr)',
     areaSeededAc: 'Area Seeded (Acres)',
     appliedRateSeedsAc: 'Applied Seeding Rate (seeds/ac)',
-    targetRateSeedsAc: 'Target Seeding Rate (seeds/ac)'
+    targetRateSeedsAc: 'Target Seeding Rate (seeds/ac)',
+    bankDetails: 'Grower Bank Details (IBAN/RFC)',
+    manufacturedIn: 'Chemical Manufactured In (Country)',
+    otherStorageMethod: 'Other Storage Application Method',
+    chemicalProduct: 'Pesticide/Chemical Product Name',
+    chemicalType: 'Plant Protection Product Type',
+    chemicalProducer: 'Chemical Producer/Manufacturer',
+    chemicalActiveIngredient: 'Chemical Active Ingredient',
+    liquidChemicalRate: 'Liquid Chemical Rate (L/ha)',
+    dryChemicalRate: 'Dry Chemical Rate (kg/ha)',
+    cftManualNitrogen: 'CFT Nitrogen Content Override %',
+    cftManualPhosphate: 'CFT Phosphate Content Override %',
+    cftManualPotassium: 'CFT Potassium Content Override %',
+    seedTreatments: 'Seed Protection Treatments',
+    treatedStorageDiseases: 'Treated Against Storage Disease?',
+    treatedRhizoctonia: 'Treated Against Rhizoctonia?'
   };
 
   // Demo loaders
@@ -583,6 +660,7 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
           {viewMode === 'image' && imagePreview && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <span style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>Snapshot Preview:</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imagePreview} alt="crop snap" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-card)' }} />
             </div>
           )}
@@ -667,123 +745,218 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
 
       {/* -------------------- VIEW 4: BATCH CSV REVIEW SCREEN -------------------- */}
       {viewMode === 'csv-review' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ margin: 0, fontSize: '0.8rem', fontWeight: '800' }}>Verify Batch ({csvRecords.length} records)</h4>
-            <button onClick={goHome} className="btn-secondary" style={{ padding: '2px 6px', fontSize: '0.55rem' }}>Cancel</button>
-          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.8rem', fontWeight: '800' }}>Verify Batch ({csvRecords.length} records)</h4>
+                <div style={{ fontSize: '0.52rem', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', gap: '6px' }}>
+                  <span style={{ color: batchErrors > 0 ? '#ffb3b1' : 'var(--text-muted)', fontWeight: 'bold' }}>{batchErrors} Errors</span>
+                  <span>•</span>
+                  <span style={{ color: batchWarnings > 0 ? '#ffe07f' : 'var(--text-muted)', fontWeight: 'bold' }}>{batchWarnings} Warnings</span>
+                </div>
+              </div>
+              <button onClick={goHome} className="btn-secondary" style={{ padding: '2px 6px', fontSize: '0.55rem' }}>Cancel</button>
+            </div>
 
-          {/* Scrollable list of cards on mobile screen */}
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '2px' }}>
-            {csvRecords.map((row, idx) => {
-              const moisture = parseFloat(row.moisturePercentage) || 0;
-              const isWarning = moisture > 18 || moisture < 12;
-              
-              return (
-                <div 
-                  key={row.id || idx}
-                  className="field-card"
-                  style={{
-                    padding: '8px 10px',
-                    borderColor: isWarning ? 'rgba(245, 158, 11, 0.25)' : 'var(--border-card)',
-                    backgroundColor: isWarning ? 'rgba(245, 158, 11, 0.02)' : 'rgba(255, 255, 255, 0.01)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px'
+            {/* Scrollable list of cards on mobile screen */}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', paddingRight: '2px' }}>
+              {csvRecords.map((row, idx) => {
+                const issues = validateRecord(row);
+                const errors = issues.filter(i => i.severity === 'error');
+                const warnings = issues.filter(i => i.severity === 'warning');
+                const hasErrors = errors.length > 0;
+                const hasWarnings = warnings.length > 0;
+                
+                let borderColor = 'var(--border-card)';
+                let bgColor = 'rgba(255, 255, 255, 0.01)';
+                if (hasErrors) {
+                  borderColor = 'rgba(186, 26, 26, 0.45)';
+                  bgColor = 'rgba(186, 26, 26, 0.03)';
+                } else if (hasWarnings) {
+                  borderColor = 'rgba(255, 208, 0, 0.25)';
+                  bgColor = 'rgba(255, 208, 0, 0.02)';
+                }
+
+                return (
+                  <div 
+                    key={row.id || idx}
+                    className="field-card"
+                    style={{
+                      padding: '8px 10px',
+                      borderColor,
+                      backgroundColor: bgColor,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span 
+                        onClick={() => { setSelectedCsvRowIdx(idx); }}
+                        style={{ 
+                          fontSize: '0.72rem', 
+                          fontWeight: 'bold', 
+                          cursor: 'pointer', 
+                          color: hasErrors ? '#ffb3b1' : (hasWarnings ? '#ffe07f' : 'var(--frito-gold)'), 
+                          textDecoration: 'underline' 
+                        }}
+                      >
+                        {row.fieldName || `Field-${idx}`}
+                      </span>
+                      <button 
+                        onClick={() => handleCsvDeleteRow(idx)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>
+                      <span>Grower: {row.growerName || 'Unknown'} ({row.region || '-'})</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>
+                        Yield: {row.yieldTons || '0.0'} T
+                      </span>
+                    </div>
+
+                    {issues.length > 0 && (
+                      <div style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: '2px', 
+                        marginTop: '4px', 
+                        borderTop: '1px dashed rgba(255,255,255,0.06)', 
+                        paddingTop: '4px' 
+                      }}>
+                        {issues.map((issue, issueIdx) => (
+                          <div 
+                            key={issueIdx} 
+                            style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '3px', 
+                              fontSize: '0.52rem', 
+                              color: issue.severity === 'error' ? '#ffb3b1' : '#ffe07f' 
+                            }}
+                          >
+                            {issue.severity === 'error' ? <XCircle size={9} /> : <AlertTriangle size={9} />}
+                            <span>{issue.message}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Floating actions */}
+            <div style={{ borderTop: '1px solid var(--border-card)', paddingTop: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button 
+                  onClick={() => {
+                    setCsvRecords(prev => [
+                      ...prev,
+                      { id: `NEW-${prev.length}`, fieldName: '', variety: 'Atlantic', growerName: '', region: 'NA', yieldTons: '0.0', moisturePercentage: '14.5', defectRate: '0.0', cropSeason: '2026', country: '', fieldLocation: '' }
+                    ]);
+                  }}
+                  className="btn-secondary" 
+                  style={{ padding: '4px 8px', fontSize: '0.62rem' }}
+                >
+                  + Add Record
+                </button>
+                <button
+                  onClick={handleSubmitCsvBatch}
+                  disabled={isLoading || csvRecords.length === 0 || batchHasErrors}
+                  className="btn-primary"
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '3px', 
+                    padding: '4px 10px', 
+                    fontSize: '0.62rem',
+                    opacity: batchHasErrors ? 0.5 : 1,
+                    cursor: batchHasErrors ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span 
-                      onClick={() => { setSelectedCsvRowIdx(idx); }}
-                      style={{ fontSize: '0.72rem', fontWeight: 'bold', cursor: 'pointer', color: 'var(--frito-gold)', textDecoration: 'underline' }}
-                    >
-                      {row.fieldName || `Field-${idx}`}
-                    </span>
-                    <button 
-                      onClick={() => handleCsvDeleteRow(idx)}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', color: 'var(--text-secondary)' }}>
-                    <span>Grower: {row.growerName || 'Unknown'} ({row.region})</span>
-                    <span style={{ color: isWarning ? '#fdc77f' : 'var(--text-primary)', fontWeight: 'bold' }}>
-                      M: {row.moisturePercentage}% {isWarning && '*'}
-                    </span>
-                  </div>
+                  {isLoading ? <Loader2 className="animate-spin" size={11} /> : <Database size={11} />} Commit Ingest
+                </button>
+              </div>
+              {batchHasErrors && (
+                <div style={{ fontSize: '0.52rem', color: '#ffb3b1', textAlign: 'right', marginTop: '4px', fontWeight: 'bold' }}>
+                  ⚠️ Resolve all errors (Red outline) to enable commit.
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Floating actions */}
-          <div style={{ borderTop: '1px solid var(--border-card)', paddingTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
-            <button 
-              onClick={() => {
-                setCsvRecords(prev => [
-                  ...prev,
-                  { id: `NEW-${prev.length}`, fieldName: 'New Plot A', variety: 'Atlantic', growerName: '', region: 'NA', yieldTons: '0.0', moisturePercentage: '14.5', defectRate: '0.0', cropSeason: '2026' }
-                ]);
-              }}
-              className="btn-secondary" 
-              style={{ padding: '4px 8px', fontSize: '0.62rem' }}
-            >
-              + Add Record
-            </button>
-            <button
-              onClick={handleSubmitCsvBatch}
-              disabled={isLoading || csvRecords.length === 0}
-              className="btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 10px', fontSize: '0.62rem' }}
-            >
-              {isLoading ? <Loader2 className="animate-spin" size={11} /> : <Database size={11} />} Commit Ingest
-            </button>
-          </div>
-
-          {/* Inline Edit popup Modal overlay if a CSV card is clicked */}
-          {selectedCsvRowIdx !== null && (
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(3, 7, 18, 0.95)',
-              zIndex: 200,
-              padding: '12px',
-              display: 'flex',
-              flexDirection: 'column',
-              borderRadius: '24px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong style={{ fontSize: '0.75rem' }}>Edit Batch Row Parameters</strong>
-                <button onClick={() => setSelectedCsvRowIdx(null)} className="btn-secondary" style={{ padding: '2px 6px', fontSize: '0.55rem' }}>Done</button>
-              </div>
-
-              {/* Scrollable form inside overlay modal */}
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {['fieldName', 'variety', 'growerName', 'region', 'yieldTons', 'moisturePercentage', 'defectRate', 'cropSeason'].map(key => (
-                  <div key={key} className="field-card" style={{ padding: '6px 8px', marginBottom: 0 }}>
-                    <label style={{ fontSize: '0.58rem', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>
-                      {fieldLabels[key] || key}
-                    </label>
-                    <input
-                      type="text"
-                      value={csvRecords[selectedCsvRowIdx][key] || ''}
-                      onChange={(e) => handleModalFieldChange(key, e.target.value)}
-                      className="field-input"
-                      style={{ padding: '4px 6px', fontSize: '0.68rem' }}
-                    />
-                  </div>
-                ))}
-              </div>
+              )}
             </div>
-          )}
 
-        </div>
-      )}
+            {/* Inline Edit popup Modal overlay if a CSV card is clicked */}
+            {selectedCsvRowIdx !== null && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(3, 7, 18, 0.98)',
+                zIndex: 200,
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                borderRadius: '24px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '0.75rem' }}>Edit Row Parameters</strong>
+                  <button onClick={() => setSelectedCsvRowIdx(null)} className="btn-secondary" style={{ padding: '2px 6px', fontSize: '0.55rem' }}>Done</button>
+                </div>
+
+                {/* Scrollable form inside overlay modal */}
+                <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {['fieldName', 'variety', 'growerName', 'country', 'region', 'yieldTons', 'moisturePercentage', 'defectRate', 'cropSeason', 'fieldLocation'].map(key => {
+                    const recordIssues = validateRecord(csvRecords[selectedCsvRowIdx]);
+                    const fieldIssue = recordIssues.find(i => i.field === key);
+                    
+                    return (
+                      <div 
+                        key={key} 
+                        className="field-card" 
+                        style={{ 
+                          padding: '6px 8px', 
+                          marginBottom: 0,
+                          borderColor: fieldIssue ? (fieldIssue.severity === 'error' ? 'rgba(186,26,26,0.5)' : 'rgba(255,208,0,0.3)') : 'var(--border-card)'
+                        }}
+                      >
+                        <label style={{ fontSize: '0.58rem', fontWeight: 'bold', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>
+                          {fieldLabels[key] || key}
+                        </label>
+                        <input
+                          type="text"
+                          value={csvRecords[selectedCsvRowIdx][key] || ''}
+                          onChange={(e) => handleModalFieldChange(key, e.target.value)}
+                          className="field-input"
+                          style={{ 
+                            padding: '4px 6px', 
+                            fontSize: '0.68rem',
+                            border: fieldIssue ? (fieldIssue.severity === 'error' ? '1px solid #ba1a1a' : '1px solid #ffd000') : '1px solid rgba(255,255,255,0.08)'
+                          }}
+                        />
+                        {fieldIssue && (
+                          <span style={{ 
+                            fontSize: '0.52rem', 
+                            color: fieldIssue.severity === 'error' ? '#ffb3b1' : '#ffe07f',
+                            display: 'block',
+                            marginTop: '2px'
+                          }}>
+                            {fieldIssue.message}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
 
       {/* -------------------- VIEW 5: MAKER-CHECKER REVIEW SHEET -------------------- */}
       {viewMode === 'maker-checker' && extractedData && (
@@ -848,6 +1021,19 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
                 warningMsg = '⚠ High Fuel Burn (>1.5 gal/ac)';
               }
               
+              const confidence = extractedData._confidence && extractedData._confidence[key] !== undefined
+                ? extractedData._confidence[key]
+                : 1.0;
+              const isLowConfidence = confidence < 0.8;
+
+              let cardBorder = isMissing ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid var(--border-card)';
+              let cardBg = isMissing ? 'rgba(245, 158, 11, 0.02)' : 'rgba(255, 255, 255, 0.01)';
+              
+              if (isLowConfidence && !isDisabled) {
+                cardBorder = '1.5px solid rgba(255, 208, 0, 0.3)';
+                cardBg = 'rgba(255, 208, 0, 0.03)';
+              }
+
               return (
                 <div 
                   key={key} 
@@ -855,8 +1041,8 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
                   style={{
                     padding: '6px 8px',
                     marginBottom: 0,
-                    border: isMissing ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid var(--border-card)',
-                    backgroundColor: isMissing ? 'rgba(245, 158, 11, 0.02)' : 'rgba(255, 255, 255, 0.01)',
+                    border: cardBorder,
+                    backgroundColor: cardBg,
                     opacity: isDisabled ? 0.6 : 1
                   }}
                 >
@@ -864,12 +1050,28 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
                     <label style={{ fontSize: '0.58rem', color: isMissing ? '#fdc77f' : 'var(--text-secondary)' }}>
                       {fieldLabels[key] || key} {isMissing && '*'}
                     </label>
-                    {warningMsg && (
+                    {isLowConfidence && !isDisabled && (
+                      <span style={{ 
+                        fontSize: '0.52rem', 
+                        color: 'var(--frito-gold-dark)', 
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2px',
+                        backgroundColor: 'rgba(255, 208, 0, 0.12)',
+                        padding: '1px 4px',
+                        borderRadius: '4px',
+                        border: '1px solid rgba(255, 208, 0, 0.3)'
+                      }}>
+                        <Sparkles size={8} /> Low Confidence ({Math.round(confidence * 100)}%)
+                      </span>
+                    )}
+                    {warningMsg && !isLowConfidence && (
                       <span style={{ fontSize: '0.52rem', color: '#fdc77f', fontWeight: 'bold' }}>
                         {warningMsg}
                       </span>
                     )}
-                    {isMissing && !warningMsg && (
+                    {isMissing && !warningMsg && !isLowConfidence && (
                       <span style={{ fontSize: '0.5rem', color: '#fdc77f', display: 'flex', alignItems: 'center', gap: '2px', fontWeight: 'bold' }}>
                         <AlertTriangle size={8} /> Missing
                       </span>
@@ -885,7 +1087,8 @@ export default function AgroPartnerPortal({ onSubmissionSuccess }) {
                     style={{ 
                       padding: '4px 6px', 
                       fontSize: '0.68rem',
-                      cursor: isDisabled ? 'not-allowed' : 'text'
+                      cursor: isDisabled ? 'not-allowed' : 'text',
+                      border: isLowConfidence && !isDisabled ? '1.5px solid rgba(255, 208, 0, 0.25)' : '1px solid rgba(255, 255, 255, 0.08)'
                     }}
                   />
                 </div>

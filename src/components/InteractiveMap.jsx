@@ -31,7 +31,12 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
 
       // Calculate layer fill color
       let layerColor = '#cbd5e1';
-      if (layer === 'yield') {
+      if (layer === 'status') {
+        const status = f.submissionStatus || 'Approved';
+        if (status === 'Flagged') layerColor = '#ef4444'; // Red
+        else if (status === 'Pending') layerColor = '#f59e0b'; // Amber
+        else layerColor = '#10b981'; // Green
+      } else if (layer === 'yield') {
         const yieldVal = parseFloat(f.yieldTons) || 0;
         if (yieldVal < 30) layerColor = '#fca5a5';
         else if (yieldVal < 45) layerColor = '#fdc77f';
@@ -46,11 +51,6 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
         if (smVal < 20) layerColor = '#ffffd9';
         else if (smVal < 30) layerColor = '#41b6c4';
         else layerColor = '#225ea8';
-      } else if (layer === 'temp') {
-        const tempVal = parseFloat(f.surfaceTemp) || 0;
-        if (tempVal < 24) layerColor = '#cbd5e1';
-        else if (tempVal < 28) layerColor = '#f768a1';
-        else layerColor = '#ae017e';
       }
 
       let mapElement;
@@ -108,11 +108,12 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
           <strong style="font-size: 12px; display: block; margin-bottom: 4px; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; color: #111827;">${f.fieldName}</strong>
           <strong>Grower:</strong> ${f.growerName}<br/>
           <strong>Variety:</strong> ${f.variety || '-'}<br/>
+          <strong>Status:</strong> <span style="font-weight: bold; color: ${f.submissionStatus === 'Flagged' ? '#ef4444' : (f.submissionStatus === 'Pending' ? '#f59e0b' : '#10b981')}">${f.submissionStatus || 'Approved'}</span><br/>
           <strong>Region:</strong> ${f.region || '-'}<br/>
           
           <div style="margin-top: 4px; border-top: 1px solid #f3f4f6; padding-top: 4px;">
             <span style="font-weight: bold; color: #4b5563; font-size: 10px; text-transform: uppercase;">BigQuery Metrics:</span><br/>
-            <strong>Yield:</strong> <span style="color: ${f.color}; font-weight: bold;">${f.yieldTons} Tons</span><br/>
+            <strong>Yield:</strong> <span style="color: ${f.submissionStatus === 'Flagged' ? '#ef4444' : '#10b981'}; font-weight: bold;">${f.yieldTons} Tons</span><br/>
             <strong>Moisture:</strong> ${f.moisturePercentage}%
           </div>
           
@@ -207,6 +208,7 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
     } else {
       map.setView([20, 0], 2);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fields, selectedRegion, selectedLayer, onFieldClick]);
 
   // Keep event zoomend listener synced with the latest active fields and layers
@@ -221,6 +223,7 @@ export default function InteractiveMap({ fields, selectedRegion, selectedLayer =
         drawMapLayers(map, polygonLayerGroupRef.current, fields, selectedLayer);
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fields, selectedLayer, onFieldClick]);
 
   return (
