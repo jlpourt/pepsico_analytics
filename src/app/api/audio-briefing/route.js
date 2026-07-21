@@ -18,38 +18,79 @@ try {
   console.warn("Could not initialize Google Gen AI client:", e.message);
 }
 
-// Function to synthesize studio audio using Google Cloud Text-to-Speech API
-async function generateStudioAudio(text, voiceName = 'en-US-Journey-F') {
+// Convert PCM raw L16 24kHz buffer to valid playable WAV audio container
+function pcmToWav(pcmBuffer, sampleRate = 24000, numChannels = 1) {
+  const byteRate = sampleRate * numChannels * 2;
+  const blockAlign = numChannels * 2;
+  const wavBuffer = Buffer.alloc(44 + pcmBuffer.length);
+
+  wavBuffer.write('RIFF', 0);
+  wavBuffer.writeUInt32LE(36 + pcmBuffer.length, 4);
+  wavBuffer.write('WAVE', 8);
+  wavBuffer.write('fmt ', 12);
+  wavBuffer.writeUInt32LE(16, 16);
+  wavBuffer.writeUInt16LE(1, 20);
+  wavBuffer.writeUInt16LE(numChannels, 22);
+  wavBuffer.writeUInt32LE(sampleRate, 24);
+  wavBuffer.writeUInt32LE(byteRate, 28);
+  wavBuffer.writeUInt16LE(blockAlign, 32);
+  wavBuffer.writeUInt16LE(16, 34);
+  wavBuffer.write('data', 36);
+  wavBuffer.writeUInt32LE(pcmBuffer.length, 40);
+
+  pcmBuffer.copy(wavBuffer, 44);
+  return wavBuffer;
+}
+
+// Function to synthesize ultra-natural audio using Gemini 3.1 Flash TTS (gemini-3.1-flash-tts-preview)
+async function generateGeminiFlashTTSAudio(text, speakerName = 'Callirrhoe') {
   try {
     const { GoogleAuth } = require('google-auth-library');
-    const auth = new GoogleAuth({
-      scopes: 'https://www.googleapis.com/auth/cloud-platform'
-    });
+    const auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
     const client = await auth.getClient();
     const tokenResponse = await client.getAccessToken();
     const token = tokenResponse.token;
     const projectId = (await auth.getProjectId()) || PROJECT_ID;
 
-    const response = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize', {
+    const url = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-3.1-flash-tts-preview:generateContent`;
+
+    const payload = {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text }]
+        }
+      ],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: speakerName
+            }
+          }
+        }
+      }
+    };
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
-        'x-goog-user-project': projectId,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        input: { text },
-        voice: { languageCode: 'en-US', name: voiceName },
-        audioConfig: { audioEncoding: 'MP3', speakingRate: 1.05, pitch: 0 }
-      })
+      body: JSON.stringify(payload)
     });
 
     const data = await response.json();
-    if (data.audioContent) {
-      return `data:audio/mp3;base64,${data.audioContent}`;
+    if (data.candidates && data.candidates[0]?.content?.parts[0]?.inlineData?.data) {
+      const base64Pcm = data.candidates[0].content.parts[0].inlineData.data;
+      const pcmBuf = Buffer.from(base64Pcm, 'base64');
+      const wavBuf = pcmToWav(pcmBuf);
+      return `data:audio/wav;base64,${wavBuf.toString('base64')}`;
     }
   } catch (err) {
-    console.warn("Google Cloud Studio Text-to-Speech API call failed:", err.message);
+    console.warn("Gemini 3.1 Flash TTS API call failed:", err.message);
   }
   return null;
 }
@@ -59,7 +100,7 @@ export async function POST(request) {
     const body = await request.json();
     const topic = body.topic || 'ops'; // 'ops', 'variety', or 'sustainability'
     const region = body.region || 'NA';
-    const voiceName = body.voiceName || 'en-US-Journey-F'; // 'en-US-Journey-F' or 'en-US-Journey-D'
+    const speaker = body.speaker || 'Callirrhoe'; // 'Callirrhoe', 'Puck', 'Aoede', 'Charon'
 
     const records = await getRecords();
     const regionRecords = records.filter(r => region === 'All' || r.region === region);
@@ -87,7 +128,7 @@ Data Context:
 - Average Defect Rate: ${avgDefect}% (Threshold < 8.0%)
 - Flagged Critical Alerts: ${flaggedCount}
 
-Tone: Executive, crisp, authoritative, concise.
+Tone: Executive, crisp, natural conversational cadence.
 Format: Return JSON with keys "title" and "script". No markdown formatting.`;
     } else if (topic === 'variety') {
       title = 'Frito-Lay Potato Variety & Solids Performance Briefing';
@@ -98,7 +139,7 @@ Data Context:
 - Total Volume: ${totalYield} Tons
 - Key Insights: Snowden leads chip solids; Atlantic meets moisture standards at ${avgMoisture}%.
 
-Tone: Analytical, executive, focused on processing quality and yield output.
+Tone: Analytical, natural conversational cadence, focused on processing quality and yield output.
 Format: Return JSON with keys "title" and "script". No markdown formatting.`;
     } else {
       title = '2026 Sustainability & Water Efficiency Audit Briefing';
@@ -109,7 +150,7 @@ Data Context:
 - Drip & Precision Center Pivot Irrigation: Active across major plots
 - Carbon Reduction Impact: Estimated 14.2% reduction in fuel/emissions per acre.
 
-Tone: Inspirational, metrics-driven, sustainability focused.
+Tone: Inspirational, metrics-driven, natural speech rhythm.
 Format: Return JSON with keys "title" and "script". No markdown formatting.`;
     }
 
@@ -117,7 +158,7 @@ Format: Return JSON with keys "title" and "script". No markdown formatting.`;
 
     try {
       if (ai) {
-        console.log(`Calling Gemini 3.5 Flash-Lite for topic ${topic}...`);
+        console.log(`Calling Gemini 3.5 Flash-Lite for script generation on topic ${topic}...`);
         const response = await ai.models.generateContent({
           model: 'gemini-3.5-flash-lite',
           contents: systemPrompt
@@ -139,7 +180,7 @@ Format: Return JSON with keys "title" and "script". No markdown formatting.`;
       console.warn("Gemini 3.5 Flash-Lite API call failed, using high-fidelity agronomic script engine:", geminiError.message);
     }
 
-    // High-fidelity fallback script generators
+    // Fallback script
     if (!script) {
       if (topic === 'ops') {
         script = `Good morning. This is your AgriFlow Executive Operations Briefing for ${region === 'NA' ? 'North America' : region}. Across our network of ${totalCount} grower fields, cumulative harvest volume stands at ${totalYield} tons. Average moisture remains optimal at ${avgMoisture} percent, with a low average defect rate of ${avgDefect} percent. We have identified ${flaggedCount} quality exception alerts currently under agronomist review. All processing plants are operating within normal capacity limits.`;
@@ -150,17 +191,17 @@ Format: Return JSON with keys "title" and "script". No markdown formatting.`;
       }
     }
 
-    // Synthesize studio HD MP3 audio via Google Cloud Text-to-Speech API
-    const audioUrl = await generateStudioAudio(script, voiceName);
+    // Synthesize ultra-natural audio using Gemini 3.1 Flash TTS (gemini-3.1-flash-tts-preview)
+    const audioUrl = await generateGeminiFlashTTSAudio(script, speaker);
 
     return NextResponse.json({
       topic,
       title,
       script,
       audioUrl,
-      voiceName,
+      speaker,
       model: 'gemini-3.5-flash-lite',
-      ttsModel: audioUrl ? 'Google Cloud Journey HD Studio Voice' : 'Web Speech Engine'
+      ttsModel: 'gemini-3.1-flash-tts-preview'
     });
 
   } catch (error) {

@@ -5,7 +5,7 @@ import { Volume2, Play, Pause, RefreshCw, Sparkles, Radio, Cpu, FileText, Check,
 
 export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion = 'NA' }) {
   const [activeTopic, setActiveTopic] = useState('ops'); // 'ops', 'variety', or 'sustainability'
-  const [selectedVoice, setSelectedVoice] = useState('en-US-Journey-F'); // 'en-US-Journey-F' or 'en-US-Journey-D'
+  const [selectedSpeaker, setSelectedSpeaker] = useState('Callirrhoe'); // 'Callirrhoe', 'Puck', 'Aoede', 'Charon'
   const [briefingData, setBriefingData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -18,18 +18,16 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
   const audioRef = useRef(null);
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
 
-  // Fetch Briefing Script & Studio HD Audio from API
-  const fetchBriefing = async (topicToFetch, voiceToUse = selectedVoice) => {
+  // Fetch Briefing Script & Gemini 3.1 Flash TTS Audio from API
+  const fetchBriefing = async (topicToFetch, speakerToUse = selectedSpeaker) => {
     setIsLoading(true);
     stopAudio();
     try {
       const response = await fetch('/api/audio-briefing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topicToFetch, region: selectedRegion, voiceName: voiceToUse })
+        body: JSON.stringify({ topic: topicToFetch, region: selectedRegion, speaker: speakerToUse })
       });
       if (response.ok) {
         const data = await response.json();
@@ -44,11 +42,11 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
   };
 
   useEffect(() => {
-    fetchBriefing(activeTopic, selectedVoice);
+    fetchBriefing(activeTopic, selectedSpeaker);
     return () => {
       stopAudio();
     };
-  }, [activeTopic, selectedVoice, refreshTrigger, selectedRegion]);
+  }, [activeTopic, selectedSpeaker, refreshTrigger, selectedRegion]);
 
   const stopAudio = () => {
     if (audioRef.current) {
@@ -72,7 +70,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
       if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
       setIsPlaying(false);
     } else {
-      // If we have Google Cloud Journey HD MP3 Studio Audio
+      // If we have Gemini 3.1 Flash TTS WAV Audio
       if (briefingData.audioUrl) {
         if (!audioRef.current) {
           audioRef.current = new Audio(briefingData.audioUrl);
@@ -136,7 +134,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
     setIsPlaying(true);
   };
 
-  // Draw Dynamic Waveform Spectrum (Works for both HD Audio and Synth)
+  // Draw Dynamic Waveform Spectrum (Works for both Gemini Flash TTS and Web Audio)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -258,21 +256,21 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
                 alignItems: 'center',
                 gap: '4px'
               }}>
-                <Sparkles size={10} /> Google Cloud Journey HD Studio Voice
+                <Sparkles size={10} /> gemini-3.1-flash-tts-preview
               </span>
             </div>
             <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-              Studio-grade HD audio briefings synthesized by Google Cloud Text-to-Speech & Gemini 3.5.
+              Natural conversational speech generated natively by Gemini 3.1 Flash TTS & Gemini 3.5.
             </p>
           </div>
         </div>
 
-        {/* Action Controls & Voice Selector */}
+        {/* Action Controls & Speaker Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {/* Voice Selector */}
+          {/* Speaker Selector */}
           <select
-            value={selectedVoice}
-            onChange={(e) => setSelectedVoice(e.target.value)}
+            value={selectedSpeaker}
+            onChange={(e) => setSelectedSpeaker(e.target.value)}
             style={{
               padding: '0.35rem 0.6rem',
               borderRadius: '6px',
@@ -284,12 +282,14 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
               cursor: 'pointer'
             }}
           >
-            <option value="en-US-Journey-F">🎙️ Studio Female (Journey-F)</option>
-            <option value="en-US-Journey-D">🎙️ Studio Male (Journey-D)</option>
+            <option value="Callirrhoe">🎙️ Callirrhoe (Conversational Female)</option>
+            <option value="Puck">🎙️ Puck (Energetic Male)</option>
+            <option value="Aoede">🎙️ Aoede (Executive Female)</option>
+            <option value="Charon">🎙️ Charon (Deep Male)</option>
           </select>
 
           <button
-            onClick={() => fetchBriefing(activeTopic, selectedVoice)}
+            onClick={() => fetchBriefing(activeTopic, selectedSpeaker)}
             disabled={isLoading}
             style={{
               display: 'flex',
@@ -305,7 +305,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
               cursor: 'pointer',
               transition: 'all 0.2s ease'
             }}
-            title="Regenerate talk track and studio audio"
+            title="Regenerate talk track and Gemini Flash TTS audio"
           >
             <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
             <span>Regenerate</span>
@@ -416,7 +416,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
             transition: 'all 0.25s ease',
             flexShrink: 0
           }}
-          title={isPlaying ? "Pause Briefing" : "Play Executive Studio HD Briefing"}
+          title={isPlaying ? "Pause Briefing" : "Play Gemini 3.1 Flash TTS Briefing"}
         >
           {isPlaying ? <Pause size={24} /> : <Play size={24} style={{ marginLeft: '3px' }} />}
         </button>
@@ -425,7 +425,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: '800', color: 'var(--text-primary)' }}>
-              {briefingData?.title || 'Synthesizing Studio Audio...'}
+              {briefingData?.title || 'Synthesizing Audio with Gemini 3.1 Flash TTS...'}
             </span>
             <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
               {formatTime(currentTime)} / {formatTime(duration)}
@@ -478,13 +478,13 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
           <Cpu size={12} style={{ color: 'var(--frito-gold)' }} />
           <span style={{ fontSize: '0.65rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.8px' }}>
-            Gemini 3.5 Flash-Lite Spoken Script Transcript
+            Gemini 3.5 Flash-Lite Script Transcript
           </span>
         </div>
 
         {isLoading ? (
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            Generating HD Studio Voice Audio with Google Cloud Text-to-Speech...
+            Generating Gemini 3.1 Flash TTS natural conversational audio...
           </div>
         ) : (
           <div style={{ fontSize: '0.82rem', lineHeight: '1.5', color: 'var(--text-primary)' }}>
