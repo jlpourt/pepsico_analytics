@@ -10,6 +10,7 @@ const InteractiveMap = dynamic(() => import('./InteractiveMap'), {
 });
 
 import InteractiveGraph from './InteractiveGraph';
+import ExecutiveAudioBriefing from './ExecutiveAudioBriefing';
 
 export default function AnalyticsDashboard({ refreshTrigger }) {
   const [records, setRecords] = useState([]);
@@ -148,6 +149,9 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
 
   return (
     <div className="dashboard-container" style={{ padding: '1.25rem', gap: '1.25rem' }}>
+      {/* Executive Audio Briefing Co-Pilot Component */}
+      <ExecutiveAudioBriefing refreshTrigger={refreshTrigger} selectedRegion={selectedRegion} />
+
       {/* Top Controls Header */}
       <div className="dashboard-header-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div className="dashboard-tag">
