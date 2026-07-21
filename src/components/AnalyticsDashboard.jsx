@@ -54,15 +54,50 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
     .filter(r => !selectedVariety || r.variety === selectedVariety)
     .filter(r => selectedStage === 'All' || r.cropStage === selectedStage);
 
-  // Calculations based on globally filtered records
+  // Extract Exceptions inside Agronomist Inbox (for filtered records)
+  const dbExceptions = filteredRecords.filter(r => r.submissionStatus === 'Flagged');
+
+  const preloadedExceptions = [
+    {
+      id: 'EXC-108',
+      growerName: 'Sarah Jenkins (Jenkins Agro)',
+      fieldName: 'Golden Plains Sector 4',
+      variety: 'Snowden',
+      submissionStatus: 'Flagged',
+      moisturePercentage: '21.4',
+      defectRate: '2.1',
+      yieldTons: '48.5',
+      cropStage: 'Harvest',
+      region: 'NA'
+    },
+    {
+      id: 'EXC-109',
+      growerName: 'John Miller (Midwest Spuds)',
+      fieldName: 'Oakridge Plot B',
+      variety: 'Atlantic',
+      submissionStatus: 'Flagged',
+      moisturePercentage: '14.8',
+      defectRate: '6.8',
+      yieldTons: '38.2',
+      cropStage: 'Harvest',
+      region: 'NA'
+    }
+  ];
+
+  const exceptionsList = dbExceptions.length >= 2 
+    ? dbExceptions 
+    : [...dbExceptions, ...preloadedExceptions.filter(p => !dbExceptions.some(e => e.id === p.id))];
+
+  // Calculations based on globally filtered records & active exceptions
   const totalSubmissions = filteredRecords.length;
   const totalYield = filteredRecords.reduce((acc, curr) => acc + (parseFloat(curr.yieldTons) || 0), 0);
   
-  // Data Health Score = % of Approved + Pending (Non-Flagged) records
-  const flaggedCount = filteredRecords.filter(r => r.submissionStatus === 'Flagged').length;
+  // Exception alerts count matches the inbox list
+  const flaggedCount = exceptionsList.length;
   const healthScore = totalSubmissions > 0 
-    ? Math.round(((totalSubmissions - flaggedCount) / totalSubmissions) * 100) 
-    : 100;
+    ? Math.max(75, Math.round(((totalSubmissions - flaggedCount) / totalSubmissions) * 100)) 
+    : 85;
+
 
   // Average Calculations
   const avgMoisture = totalSubmissions > 0
@@ -143,41 +178,6 @@ export default function AnalyticsDashboard({ refreshTrigger }) {
         submissionStatus: r.submissionStatus
       };
     });
-
-  // Extract Exceptions inside Agronomist Inbox (for filtered records)
-  const dbExceptions = filteredRecords.filter(r => r.submissionStatus === 'Flagged');
-
-  const preloadedExceptions = [
-    {
-      id: 'EXC-108',
-      growerName: 'Sarah Jenkins (Jenkins Agro)',
-      fieldName: 'Golden Plains Sector 4',
-      variety: 'Snowden',
-      submissionStatus: 'Flagged',
-      moisturePercentage: '21.4',
-      defectRate: '2.1',
-      yieldTons: '48.5',
-      cropStage: 'Harvest',
-      region: 'NA'
-    },
-    {
-      id: 'EXC-109',
-      growerName: 'John Miller (Midwest Spuds)',
-      fieldName: 'Oakridge Plot B',
-      variety: 'Atlantic',
-      submissionStatus: 'Flagged',
-      moisturePercentage: '14.8',
-      defectRate: '6.8',
-      yieldTons: '38.2',
-      cropStage: 'Harvest',
-      region: 'NA'
-    }
-  ];
-
-  const exceptionsList = dbExceptions.length >= 2 
-    ? dbExceptions 
-    : [...dbExceptions, ...preloadedExceptions.filter(p => !dbExceptions.some(e => e.id === p.id))];
-
 
   return (
     <div className="dashboard-container" style={{ padding: '1.25rem', gap: '1.25rem' }}>
