@@ -1,40 +1,40 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Play, Pause, RefreshCw, Sparkles, Radio, Cpu, Layers, FileText, Check, ShieldCheck } from 'lucide-react';
+import { Volume2, Play, Pause, RefreshCw, Sparkles, Radio, Cpu, FileText, Check, Mic } from 'lucide-react';
 
 export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion = 'NA' }) {
   const [activeTopic, setActiveTopic] = useState('ops'); // 'ops', 'variety', or 'sustainability'
+  const [selectedVoice, setSelectedVoice] = useState('en-US-Journey-F'); // 'en-US-Journey-F' or 'en-US-Journey-D'
   const [briefingData, setBriefingData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(-1);
   const [copied, setCopied] = useState(false);
-  const [duration, setDuration] = useState(42);
+  const [duration, setDuration] = useState(35);
   const [currentTime, setCurrentTime] = useState(0);
 
-  const synthRef = useRef(null);
-  const utteranceRef = useRef(null);
+  const audioRef = useRef(null);
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const timerRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
 
-  // Fetch Briefing Script from API
-  const fetchBriefing = async (topicToFetch) => {
+  // Fetch Briefing Script & Studio HD Audio from API
+  const fetchBriefing = async (topicToFetch, voiceToUse = selectedVoice) => {
     setIsLoading(true);
     stopAudio();
     try {
       const response = await fetch('/api/audio-briefing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topicToFetch, region: selectedRegion })
+        body: JSON.stringify({ topic: topicToFetch, region: selectedRegion, voiceName: voiceToUse })
       });
       if (response.ok) {
         const data = await response.json();
         setBriefingData(data);
-        const sentenceCount = data.script.split('.').filter(Boolean).length;
-        setDuration(Math.max(30, sentenceCount * 7));
+        setCurrentTime(0);
       }
     } catch (err) {
       console.error("Failed to fetch audio briefing:", err);
@@ -44,13 +44,17 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
   };
 
   useEffect(() => {
-    fetchBriefing(activeTopic);
+    fetchBriefing(activeTopic, selectedVoice);
     return () => {
       stopAudio();
     };
-  }, [activeTopic, refreshTrigger, selectedRegion]);
+  }, [activeTopic, selectedVoice, refreshTrigger, selectedRegion]);
 
   const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -58,83 +62,81 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
     setCurrentSentenceIndex(-1);
     setCurrentTime(0);
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    if (timerRef.current) clearInterval(timerRef.current);
   };
 
   const handlePlayPause = () => {
     if (!briefingData || !briefingData.script) return;
 
     if (isPlaying) {
-      stopAudio();
+      if (audioRef.current) audioRef.current.pause();
+      if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
+      setIsPlaying(false);
     } else {
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        alert("Web Speech synthesis is not supported in this browser.");
-        return;
-      }
-
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(briefingData.script);
-      utterance.rate = playbackRate;
-      utterance.pitch = 1.0;
-
-      // Select natural English voice
-      const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Samantha') || v.name.includes('Daniel'))) || voices.find(v => v.lang.startsWith('en'));
-      if (preferredVoice) utterance.voice = preferredVoice;
-
-      const sentences = briefingData.script.split(/(?<=[.!?])\s+/).filter(Boolean);
-
-      utterance.onstart = () => {
-        setIsPlaying(true);
-        setCurrentTime(0);
-        
-        // Progress timer
-        timerRef.current = setInterval(() => {
-          setCurrentTime(prev => {
-            if (prev >= duration) {
-              clearInterval(timerRef.current);
-              return duration;
-            }
-            return prev + 1;
-          });
-        }, 1000 / playbackRate);
-      };
-
-      utterance.onboundary = (event) => {
-        if (event.name === 'sentence' || event.name === 'word') {
-          const charIdx = event.charIndex;
-          let runningLength = 0;
-          for (let i = 0; i < sentences.length; i++) {
-            runningLength += sentences[i].length + 1;
-            if (charIdx <= runningLength) {
-              setCurrentSentenceIndex(i);
-              break;
-            }
-          }
+      // If we have Google Cloud Journey HD MP3 Studio Audio
+      if (briefingData.audioUrl) {
+        if (!audioRef.current) {
+          audioRef.current = new Audio(briefingData.audioUrl);
+        } else if (audioRef.current.src !== briefingData.audioUrl) {
+          audioRef.current.src = briefingData.audioUrl;
         }
-      };
 
-      utterance.onend = () => {
-        setIsPlaying(false);
-        setCurrentSentenceIndex(-1);
-        setCurrentTime(duration);
-        if (timerRef.current) clearInterval(timerRef.current);
-      };
+        const audio = audioRef.current;
+        audio.playbackRate = playbackRate;
 
-      utterance.onerror = () => {
-        setIsPlaying(false);
-        setCurrentSentenceIndex(-1);
-        if (timerRef.current) clearInterval(timerRef.current);
-      };
+        audio.onloadedmetadata = () => {
+          setDuration(audio.duration || 35);
+        };
 
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-      setIsPlaying(true);
+        audio.ontimeupdate = () => {
+          setCurrentTime(audio.currentTime);
+          setDuration(audio.duration || 35);
+
+          // Sentence tracking for HD audio
+          const sentences = briefingData.script.split(/(?<=[.!?])\s+/).filter(Boolean);
+          const ratio = audio.currentTime / (audio.duration || 1);
+          const idx = Math.min(sentences.length - 1, Math.floor(ratio * sentences.length));
+          setCurrentSentenceIndex(idx);
+        };
+
+        audio.onended = () => {
+          setIsPlaying(false);
+          setCurrentSentenceIndex(-1);
+          setCurrentTime(audio.duration || 35);
+        };
+
+        audio.play().then(() => {
+          setIsPlaying(true);
+        }).catch(err => {
+          console.warn("HTML5 Audio play failed, falling back to Web Speech:", err);
+          playWebSpeechFallback();
+        });
+      } else {
+        playWebSpeechFallback();
+      }
     }
   };
 
-  // Draw Audio Waveform Spectrum
+  const playWebSpeechFallback = () => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(briefingData.script);
+    utterance.rate = playbackRate;
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Premium'))) || voices.find(v => v.lang.startsWith('en'));
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    utterance.onstart = () => setIsPlaying(true);
+    utterance.onend = () => {
+      setIsPlaying(false);
+      setCurrentSentenceIndex(-1);
+    };
+
+    window.speechSynthesis.speak(utterance);
+    setIsPlaying(true);
+  };
+
+  // Draw Dynamic Waveform Spectrum (Works for both HD Audio and Synth)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -153,8 +155,8 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
       for (let i = 0; i < numBars; i++) {
         let barHeight = 6;
         if (isPlaying) {
-          barHeight = Math.sin(phase + i * 0.3) * 16 + Math.cos(phase * 1.5 + i * 0.2) * 12 + 20;
-          barHeight = Math.max(4, Math.min(height - 4, barHeight));
+          barHeight = Math.sin(phase + i * 0.25) * 16 + Math.cos(phase * 1.8 + i * 0.15) * 12 + 22;
+          barHeight = Math.max(5, Math.min(height - 4, barHeight));
         }
 
         const x = i * (barWidth + gap);
@@ -176,7 +178,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
       }
 
       if (isPlaying) {
-        phase += 0.15;
+        phase += 0.18;
       }
       animationFrameRef.current = requestAnimationFrame(render);
     };
@@ -199,6 +201,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
   const sentences = briefingData?.script ? briefingData.script.split(/(?<=[.!?])\s+/).filter(Boolean) : [];
 
   const formatTime = (secs) => {
+    if (isNaN(secs)) return '00:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
@@ -206,31 +209,19 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
 
   return (
     <div style={{
-      backgroundColor: 'rgba(5, 10, 20, 0.75)',
-      border: '1.5px solid rgba(255, 208, 0, 0.25)',
+      backgroundColor: 'rgba(5, 10, 20, 0.85)',
+      border: '1.5px solid rgba(255, 208, 0, 0.3)',
       borderRadius: '16px',
       padding: '1.25rem',
       display: 'flex',
       flexDirection: 'column',
       gap: '1rem',
-      boxShadow: '0 8px 32px rgba(0, 47, 108, 0.25)',
+      boxShadow: '0 8px 32px rgba(0, 47, 108, 0.35)',
       marginBottom: '1rem',
       backdropFilter: 'blur(16px)',
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Background Accent Glow */}
-      <div style={{
-        position: 'absolute',
-        top: '-40px',
-        right: '-40px',
-        width: '180px',
-        height: '180px',
-        borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(0,47,108,0.4) 0%, rgba(0,0,0,0) 70%)',
-        pointerEvents: 'none'
-      }} />
-
       {/* Header Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -238,13 +229,13 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
             width: '2.2rem',
             height: '2.2rem',
             borderRadius: '10px',
-            backgroundColor: 'rgba(0, 47, 108, 0.5)',
+            backgroundColor: 'rgba(0, 47, 108, 0.6)',
             border: '1px solid var(--frito-gold)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: 'var(--frito-gold)',
-            boxShadow: '0 0 12px rgba(255, 208, 0, 0.2)'
+            boxShadow: '0 0 12px rgba(255, 208, 0, 0.25)'
           }}>
             <Radio size={18} className={isPlaying ? "animate-spin" : ""} />
           </div>
@@ -258,28 +249,47 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
                 fontWeight: '700',
                 textTransform: 'uppercase',
                 letterSpacing: '0.8px',
-                color: 'var(--frito-gold)',
-                backgroundColor: 'rgba(255, 208, 0, 0.1)',
-                padding: '2px 7px',
+                color: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                padding: '2px 8px',
                 borderRadius: '4px',
-                border: '1px solid rgba(255, 208, 0, 0.3)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px'
               }}>
-                <Sparkles size={10} /> Gemini 3.5 Flash-Lite + Gemini TTS
+                <Sparkles size={10} /> Google Cloud Journey HD Studio Voice
               </span>
             </div>
             <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-              AI-synthesized spoken agronomic briefings generated dynamically from BigQuery telemetry data.
+              Studio-grade HD audio briefings synthesized by Google Cloud Text-to-Speech & Gemini 3.5.
             </p>
           </div>
         </div>
 
-        {/* Action Controls */}
+        {/* Action Controls & Voice Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Voice Selector */}
+          <select
+            value={selectedVoice}
+            onChange={(e) => setSelectedVoice(e.target.value)}
+            style={{
+              padding: '0.35rem 0.6rem',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(0, 47, 108, 0.5)',
+              border: '1px solid var(--frito-gold)',
+              color: 'var(--frito-gold)',
+              fontSize: '0.7rem',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="en-US-Journey-F">🎙️ Studio Female (Journey-F)</option>
+            <option value="en-US-Journey-D">🎙️ Studio Male (Journey-D)</option>
+          </select>
+
           <button
-            onClick={() => fetchBriefing(activeTopic)}
+            onClick={() => fetchBriefing(activeTopic, selectedVoice)}
             disabled={isLoading}
             style={{
               display: 'flex',
@@ -295,7 +305,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
               cursor: 'pointer',
               transition: 'all 0.2s ease'
             }}
-            title="Regenerate talk track using Gemini 3.5 Flash-Lite"
+            title="Regenerate talk track and studio audio"
           >
             <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
             <span>Regenerate</span>
@@ -379,7 +389,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
 
       {/* Main Audio Player & Spectrum Console */}
       <div style={{
-        backgroundColor: 'rgba(3, 7, 18, 0.9)',
+        backgroundColor: 'rgba(3, 7, 18, 0.95)',
         border: '1px solid var(--border-card)',
         borderRadius: '12px',
         padding: '1rem',
@@ -392,8 +402,8 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
           onClick={handlePlayPause}
           disabled={isLoading || !briefingData}
           style={{
-            width: '3.2rem',
-            height: '3.2rem',
+            width: '3.4rem',
+            height: '3.4rem',
             borderRadius: '50%',
             backgroundColor: isPlaying ? '#e31937' : '#002F6C',
             border: '2px solid var(--frito-gold)',
@@ -402,22 +412,22 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
             justifyContent: 'center',
             color: '#fff',
             cursor: 'pointer',
-            boxShadow: isPlaying ? '0 0 20px rgba(227, 25, 55, 0.5)' : '0 0 16px rgba(0, 47, 108, 0.5)',
+            boxShadow: isPlaying ? '0 0 24px rgba(227, 25, 55, 0.6)' : '0 0 20px rgba(0, 47, 108, 0.6)',
             transition: 'all 0.25s ease',
             flexShrink: 0
           }}
-          title={isPlaying ? "Pause Briefing" : "Play Executive Audio Briefing"}
+          title={isPlaying ? "Pause Briefing" : "Play Executive Studio HD Briefing"}
         >
-          {isPlaying ? <Pause size={22} /> : <Play size={22} style={{ marginLeft: '3px' }} />}
+          {isPlaying ? <Pause size={24} /> : <Play size={24} style={{ marginLeft: '3px' }} />}
         </button>
 
         {/* Waveform Canvas Visualizer */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: '800', color: 'var(--text-primary)' }}>
-              {briefingData?.title || 'Loading Briefing Track...'}
+            <span style={{ fontSize: '0.82rem', fontWeight: '800', color: 'var(--text-primary)' }}>
+              {briefingData?.title || 'Synthesizing Studio Audio...'}
             </span>
-            <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
           </div>
@@ -426,7 +436,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
             ref={canvasRef}
             width={400}
             height={36}
-            style={{ width: '100%', height: '36px', borderRadius: '6px', backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
+            style={{ width: '100%', height: '36px', borderRadius: '6px', backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
           />
         </div>
 
@@ -437,7 +447,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
               key={rate}
               onClick={() => {
                 setPlaybackRate(rate);
-                if (isPlaying) stopAudio();
+                if (audioRef.current) audioRef.current.playbackRate = rate;
               }}
               style={{
                 padding: '0.2rem 0.45rem',
@@ -458,7 +468,7 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
 
       {/* Live Highlighted AI Transcript */}
       <div style={{
-        backgroundColor: 'rgba(15, 23, 42, 0.6)',
+        backgroundColor: 'rgba(15, 23, 42, 0.65)',
         border: '1px solid var(--border-card)',
         borderRadius: '10px',
         padding: '0.85rem 1rem',
@@ -468,13 +478,13 @@ export default function ExecutiveAudioBriefing({ refreshTrigger, selectedRegion 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.4rem' }}>
           <Cpu size={12} style={{ color: 'var(--frito-gold)' }} />
           <span style={{ fontSize: '0.65rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.8px' }}>
-            Gemini 3.5 Flash-Lite Generated Talk Track Transcript
+            Gemini 3.5 Flash-Lite Spoken Script Transcript
           </span>
         </div>
 
         {isLoading ? (
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-            Synthesizing executive briefing transcript with Gemini 3.5...
+            Generating HD Studio Voice Audio with Google Cloud Text-to-Speech...
           </div>
         ) : (
           <div style={{ fontSize: '0.82rem', lineHeight: '1.5', color: 'var(--text-primary)' }}>
