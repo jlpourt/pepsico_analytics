@@ -1006,6 +1006,21 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.phone-collapse-panel {
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.floating-phone-toggle:hover {
+  background-color: #003e8c !important;
+  box-shadow: -6px 0 24px rgba(0, 47, 108, 0.6) !important;
+}
+
+
 /* Scrollbars */
 .scrollable-fields::-webkit-scrollbar,
 .chat-messages::-webkit-scrollbar,
